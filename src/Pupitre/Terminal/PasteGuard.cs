@@ -10,6 +10,14 @@ public static class PasteGuard
     /// Without bracketed paste mode (cmd, raw SSH targets), every line break typed into the shell runs a command,
     /// so pasting several lines executes them one by one.
     /// </summary>
+    /// <summary>
+    /// Removes control characters except tab and line breaks. Clipboard text can come from a web page: an embedded
+    /// ESC sequence such as the bracketed paste end marker (ESC[201~) would end the protected block early and run
+    /// the rest as commands (pastejacking). Done before <see cref="RequiresConfirmation"/>, which judges the result.
+    /// </summary>
+    public static string Sanitize(string text) =>
+        string.Concat(text.Where(character => !char.IsControl(character) || character is '\t' or '\r' or '\n'));
+
     public static bool RequiresConfirmation(string text, bool bracketedPasteMode) =>
         text.Length > LargePasteLength
         || !bracketedPasteMode && text.AsSpan().IndexOfAny('\r', '\n') >= 0;

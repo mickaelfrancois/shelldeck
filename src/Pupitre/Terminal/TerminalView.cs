@@ -291,7 +291,12 @@ public sealed class TerminalView : UserControl
             return;
         }
 
-        if (text is null)
+        if (text is not null)
+        {
+            text = PasteGuard.Sanitize(text);
+        }
+
+        if (string.IsNullOrEmpty(text))
         {
             // No text (e.g. a screenshot): hand the keystroke to the program, which may read the clipboard itself.
             if (fromKeyboard)
