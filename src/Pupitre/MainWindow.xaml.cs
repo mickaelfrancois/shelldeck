@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
@@ -24,6 +26,13 @@ public partial class MainWindow : Window
         settings => settings.Save());
 
     private readonly DispatcherTimer _toastTimer;
+
+    // Editors write a file in several steps: reload once they are done.
+    private readonly DispatcherTimer _settingsReloadTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
+    private readonly IDisposable _settingsWatcher;
+
+    // The state to restore when the window is closed while minimized from the taskbar.
+    private bool _wasMaximized;
 
     public MainWindow()
     {
@@ -51,6 +60,29 @@ public partial class MainWindow : Window
         LocationChanged += (_, _) => HideToast();
         Deactivated += (_, _) => HideToast();
         SourceInitialized += (_, _) => UseDarkTitleBar();
+
+        _settingsReloadTimer.Tick += (_, _) =>
+        {
+            _settingsReloadTimer.Stop();
+            // A file that does not parse yet (half-typed edit) keeps the current settings.
+            if (AppSettings.TryLoad(out var settings))
+            {
+                _viewModel.ReloadSettings(settings);
+            }
+        };
+        _settingsWatcher = AppSettings.Watch(() => Dispatcher.BeginInvoke(() =>
+        {
+            _settingsReloadTimer.Stop();
+            _settingsReloadTimer.Start();
+        }));
+        Closed += (_, _) => _settingsWatcher.Dispose();
+        StateChanged += (_, _) =>
+        {
+            if (WindowState != WindowState.Minimized)
+            {
+                _wasMaximized = WindowState == WindowState.Maximized;
+            }
+        };
 
         if (_viewModel.DefaultProfile is { } defaultProfile)
         {
@@ -206,30 +238,48 @@ public partial class MainWindow : Window
 
     private void RestoreWindowPlacement()
     {
-        var virtualScreen = new Rect(
-            SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
-            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-        if (_viewModel.WindowPlacement is not { } placement || !placement.IsVisibleOn(virtualScreen))
+        if (_viewModel.WindowPlacement is not { IsValid: true } saved)
         {
             return;
         }
 
+        // After unplugging the monitor the window was on, it opens on the nearest remaining one.
+        var placement = saved.KeepOnScreen(Monitors.WorkAreas());
         WindowStartupLocation = WindowStartupLocation.Manual;
         (Left, Top, Width, Height) = (placement.Left, placement.Top, placement.Width, placement.Height);
         WindowState = placement.IsMaximized ? WindowState.Maximized : WindowState.Normal;
+        _wasMaximized = placement.IsMaximized;
     }
 
     // RestoreBounds keeps the normal size of a maximized window, so un-maximizing after a restart still works.
     private void SaveWindowPlacement() =>
         _viewModel.SaveWindowPlacement(new WindowPlacement(
             RestoreBounds.Left, RestoreBounds.Top, RestoreBounds.Width, RestoreBounds.Height,
-            WindowState == WindowState.Maximized));
+            WindowState == WindowState.Maximized || WindowState == WindowState.Minimized && _wasMaximized));
 
     private void OnNewTabClicked(object sender, RoutedEventArgs e) =>
         _viewModel.OpenDefault();
 
     private void OnTogglePanelSideClicked(object sender, RoutedEventArgs e) =>
         _viewModel.TogglePanelSide();
+
+    /// <summary>Opens settings.json in the editor associated with .json files, Notepad when there is none.</summary>
+    private void OnSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        if (!File.Exists(AppSettings.FilePath))
+        {
+            _viewModel.SaveCurrentSettings();
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(AppSettings.FilePath) { UseShellExecute = true });
+        }
+        catch (Win32Exception)
+        {
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{AppSettings.FilePath}\"") { UseShellExecute = true });
+        }
+    }
 
     private void OnFilterKeyDown(object sender, KeyEventArgs e)
     {

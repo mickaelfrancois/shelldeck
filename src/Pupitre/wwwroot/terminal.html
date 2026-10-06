@@ -64,8 +64,9 @@
       return true;
     });
     term.parser.registerOscHandler(777, data => {
-      const [command, title, body] = data.split(';');
-      if (command === 'notify') post({ type: 'notification', data: body || title });
+      const [command, title, ...body] = data.split(';');
+      // The body may itself contain ';'.
+      if (command === 'notify') post({ type: 'notification', data: body.join(';') || title });
       return true;
     });
     chrome.webview.addEventListener('message', event => term.write(event.data));
@@ -79,7 +80,8 @@
     };
     const requestPaste = fromKeyboard =>
       post({ type: 'paste', fromKeyboard, bracketedPasteMode: term.modes.bracketedPasteMode });
-    const isCtrlKey = (event, key) => event.ctrlKey && !event.altKey && event.key.toLowerCase() === key;
+    // By physical key: with a Cyrillic or Greek layout, Ctrl+V reports event.key 'м', not 'v'.
+    const isCtrlKey = (event, code) => event.ctrlKey && !event.altKey && event.code === code;
 
     // Application shortcuts, sent by the host once the page is ready: [{ code, ctrl, alt, shift, character }],
     // identified by position. Modifiers must match exactly, so AltGr (Ctrl+Alt) keeps typing characters.
@@ -106,13 +108,13 @@
         return false;
       }
       // Ctrl+C copies a selection; without one it stays the interrupt (^C). Ctrl+Shift+C always copies.
-      if (isCtrlKey(event, 'c') && (event.shiftKey || term.hasSelection())) {
+      if (isCtrlKey(event, 'KeyC') && (event.shiftKey || term.hasSelection())) {
         event.preventDefault();
         copySelection();
         term.clearSelection();
         return false;
       }
-      if (isCtrlKey(event, 'v') || (event.shiftKey && event.key === 'Insert')) {
+      if (isCtrlKey(event, 'KeyV') || (event.shiftKey && event.key === 'Insert')) {
         event.preventDefault(); // stops the browser's own paste, which would paste a second time
         requestPaste(true);
         return false;
@@ -134,6 +136,14 @@
     container.addEventListener('auxclick', event => {
       if (event.button === 1) requestPaste(false);
     });
+
+    // Any other way into the browser's own paste (e.g. an unforeseen key combination) would hand xterm the raw
+    // clipboard, bypassing the host's sanitizing and confirmation: route it through the host instead.
+    term.textarea.addEventListener('paste', event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      requestPaste(false);
+    }, true);
 
     window.pasteText = text => term.paste(text);
 

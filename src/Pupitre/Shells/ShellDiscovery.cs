@@ -45,12 +45,26 @@ public static class ShellDiscovery
         yield return new ShellProfile("Invite de commandes", Quote(cmd), ShellKind.Cmd, UserProfileDirectory);
     }
 
+    /// <summary>The highest stable version under Program Files\PowerShell\&lt;major&gt;; previews ("7-preview") are skipped.</summary>
     private static string? FindPowerShellCore()
     {
         var installRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell");
-        var installed = Directory.Exists(installRoot)
-            ? Directory.EnumerateFiles(installRoot, "pwsh.exe", SearchOption.AllDirectories).Order().LastOrDefault()
-            : null;
+        string? installed = null;
+        try
+        {
+            installed = Directory.Exists(installRoot)
+                ? Directory.EnumerateDirectories(installRoot)
+                    .Select(directory => (Directory: directory, IsVersion: int.TryParse(Path.GetFileName(directory), out var major), Major: major))
+                    .Where(candidate => candidate.IsVersion)
+                    .OrderByDescending(candidate => candidate.Major)
+                    .Select(candidate => Path.Combine(candidate.Directory, "pwsh.exe"))
+                    .FirstOrDefault(File.Exists)
+                : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // An unreadable install folder must not prevent startup: fall back to PATH.
+        }
 
         return installed ?? FindOnPath("pwsh.exe");
     }

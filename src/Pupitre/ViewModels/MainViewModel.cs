@@ -171,10 +171,12 @@ public sealed class MainViewModel : ObservableObject
 
     public void Close(TerminalTab tab)
     {
+        // Captured first: removing the selected item makes the tab list push a null selection back to us.
+        var wasSelected = SelectedTab == tab || SelectedTab is null;
         var closedIndex = Tabs.IndexOf(tab);
         Tabs.Remove(tab);
 
-        if (SelectedTab == tab)
+        if (wasSelected)
         {
             SelectedTab = Tabs.ElementAtOrDefault(Math.Min(closedIndex, Tabs.Count - 1));
         }
@@ -214,8 +216,36 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        var currentIndex = SelectedTab is null ? 0 : Tabs.IndexOf(SelectedTab);
+        var currentIndex = SelectedTab is null ? -1 : Tabs.IndexOf(SelectedTab);
+        if (currentIndex < 0)
+        {
+            SelectedTab = offset > 0 ? Tabs[0] : Tabs[^1];
+            return;
+        }
+
         SelectedTab = Tabs[(currentIndex + offset + Tabs.Count) % Tabs.Count];
+    }
+
+    /// <summary>Writes the settings as they are, e.g. to create the file before opening it in an editor.</summary>
+    public void SaveCurrentSettings() => _saveSettings(_settings);
+
+    /// <summary>The settings file was edited by hand: take its values, without writing them back.</summary>
+    public void ReloadSettings(AppSettings settings)
+    {
+        if (settings == _settings)
+        {
+            return;
+        }
+
+        var previous = _settings;
+        _settings = settings;
+        if (settings.PanelSide != previous.PanelSide)
+        {
+            OnPropertyChanged(nameof(PanelSide));
+        }
+
+        OnPropertyChanged(nameof(DefaultProfile));
+        OnPropertyChanged(nameof(DefaultProfileName));
     }
 
     private void UpdateSettings(AppSettings settings)

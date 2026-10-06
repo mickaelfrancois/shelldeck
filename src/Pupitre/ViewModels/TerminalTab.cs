@@ -318,6 +318,12 @@ public sealed class TerminalTab : ObservableObject
         // so a non-zero code alone does not mean the shell failed.
         var failedAtStartup = exitCode != SuccessExitCode && lifetime < StartupFailureWindow;
 
+        // The exit may be reported just after the pane was closed, before its view is unloaded.
+        if (!Panes.Contains(pane))
+        {
+            return;
+        }
+
         if (pane == MainPane)
         {
             _exitCode = exitCode;
@@ -343,7 +349,7 @@ public sealed class TerminalTab : ObservableObject
     private void PromoteToMain(TerminalPane pane)
     {
         MainPane = pane;
-        _exitCode = 0;
+        _exitCode = pane.ExitCode;
         Notification = null;
         IsClaudeSession = false;
         Status = TerminalStatus.Running;

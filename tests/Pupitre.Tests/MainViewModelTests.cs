@@ -160,4 +160,54 @@ public sealed class MainViewModelTests
 
         Assert.Equal(Docker01, viewModel.SelectedTab?.Profile);
     }
+
+    [Fact]
+    public void Closing_the_selected_tab_selects_the_one_that_takes_its_place()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+        viewModel.Open(PowerShell);
+        viewModel.Open(Ubuntu);
+        viewModel.Open(Docker01);
+        var (middle, next) = (viewModel.Tabs[1], viewModel.Tabs[2]);
+        viewModel.SelectedTab = middle;
+
+        // The tab list clears its selection as soon as the selected item is removed, before Close goes on.
+        viewModel.Tabs.CollectionChanged += (_, e) =>
+        {
+            if (e.OldItems?.Contains(viewModel.SelectedTab) == true)
+            {
+                viewModel.SelectedTab = null;
+            }
+        };
+        viewModel.Close(middle);
+
+        Assert.Same(next, viewModel.SelectedTab);
+    }
+
+    [Fact]
+    public void Next_tab_without_a_selection_starts_from_the_first_tab()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+        viewModel.Open(PowerShell);
+        viewModel.Open(Ubuntu);
+        viewModel.SelectedTab = null;
+
+        viewModel.SelectNextTab();
+
+        Assert.Same(viewModel.Tabs[0], viewModel.SelectedTab);
+    }
+
+    [Fact]
+    public void Settings_edited_by_hand_apply_without_being_written_back()
+    {
+        var saves = 0;
+        var viewModel = CreateViewModel(new AppSettings(), _ => saves++);
+        var changed = new List<string?>();
+        viewModel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        viewModel.ReloadSettings(new AppSettings(PanelSide.Right, "Ubuntu-26.04"));
+
+        Assert.Equal((PanelSide.Right, Ubuntu, 0), (viewModel.PanelSide, viewModel.DefaultProfile, saves));
+        Assert.Contains(nameof(MainViewModel.PanelSide), changed);
+    }
 }

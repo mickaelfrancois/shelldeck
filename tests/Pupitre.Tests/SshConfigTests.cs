@@ -36,7 +36,49 @@ public sealed class SshConfigTests
 
         var hosts = SshConfig.ParseHosts(config);
 
-        Assert.Equal([new SshHost("bastion", "bastion.example.com", null)], hosts);
+        Assert.Equal([new SshHost("bastion", "bastion.example.com", "everyone")], hosts);
+    }
+
+    [Fact]
+    public void The_first_value_found_wins_across_all_matching_blocks()
+    {
+        const string config = """
+            Host web
+                HostName web.example.com
+            Host web-* !web-old
+                User deploy
+            Host web-01 web-old
+                HostName 10.0.0.1
+            Host web
+                HostName ignored.example.com
+                User admin
+            """;
+
+        var hosts = SshConfig.ParseHosts(config);
+
+        Assert.Equal(
+            [
+                new SshHost("web", "web.example.com", "admin"),
+                new SshHost("web-01", "10.0.0.1", "deploy"),
+                new SshHost("web-old", "10.0.0.1", null),
+            ],
+            hosts);
+    }
+
+    [Fact]
+    public void Trailing_comments_and_quotes_are_not_part_of_the_aliases()
+    {
+        const string config = """
+            Host prod "staging" # main servers
+                HostName "prod.example.com" # primary
+            Host -oProxyCommand=evil
+            """;
+
+        var hosts = SshConfig.ParseHosts(config);
+
+        Assert.Equal(
+            [new SshHost("prod", "prod.example.com", null), new SshHost("staging", "prod.example.com", null)],
+            hosts);
     }
 
     [Fact]

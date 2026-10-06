@@ -83,7 +83,7 @@
             </Border.Style>
 
             <DockPanel>
-                <!-- Footer: application-level actions (keyboard reference, later the settings). -->
+                <!-- Footer: application-level actions (keyboard reference, settings). -->
                 <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="8,6">
                     <StackPanel Orientation="Horizontal">
                         <!-- Not clickable while open: the click that closes the popup would otherwise reopen it. -->
@@ -92,6 +92,10 @@
                                       ToolTip="Raccourcis clavier" AutomationProperties.Name="Raccourcis clavier"
                                       IsChecked="{Binding IsOpen, ElementName=ShortcutHelpPopup}"
                                       IsHitTestVisible="{Binding IsOpen, ElementName=ShortcutHelpPopup, Converter={x:Static pupitre:Converters.Not}}" />
+                        <Button Style="{StaticResource IconButtonStyle}" Width="26" Height="26" Margin="4,0,0,0"
+                                Content="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                                ToolTip="Paramètres (settings.json)" AutomationProperties.Name="Paramètres"
+                                Click="OnSettingsClicked" />
                     </StackPanel>
                 </Border>
 
@@ -421,7 +425,7 @@
             </ItemsControl>
 
             <!-- A Popup, because WPF content cannot be drawn over the WebView2 window (airspace). -->
-            <Popup x:Name="AttentionToast" PlacementTarget="{Binding ElementName=TerminalArea}" Placement="Custom"
+            <Popup x:Name="AttentionToast" DataContext="{x:Null}" PlacementTarget="{Binding ElementName=TerminalArea}" Placement="Custom"
                    AllowsTransparency="True" StaysOpen="True">
                 <Border Width="320" Margin="0,0,12,12" Padding="12" Cursor="Hand" MouseLeftButtonUp="OnToastClicked"
                         Background="{StaticResource ChromeRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6">

@@ -27,15 +27,26 @@ public sealed class TerminalView : UserControl
     private const string CtrlV = "\x16";
     private const string ClipboardBusyMessage = "Presse-papiers occupé par une autre application, réessayez.";
 
-    private static readonly Lazy<Task<CoreWebView2Environment>> SharedEnvironment = new(() =>
-        CoreWebView2Environment.CreateAsync(userDataFolder: Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), App.ProductName, "WebView2")));
+    // Output not yet handed to the page; past this size the pump stops reading, which throttles the program.
+    private const int MaxPendingOutput = 1024 * 1024;
+
+    // ConPTY may still be rendering the last output when the process ends: let it reach the page first.
+    private static readonly TimeSpan ExitFlushDelay = TimeSpan.FromMilliseconds(150);
+
+    private static readonly string WebViewDataFolder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), App.ProductName, "WebView2");
+
+    private static Task<CoreWebView2Environment>? _sharedEnvironment;
 
     private readonly WebView2 _webView = new() { DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x0C, 0x0C, 0x0E) };
+    private readonly StringBuilder _pendingOutput = new();
+    private bool _isFlushScheduled;
+    private TerminalPane? _pane;
     private PtySession? _session;
     private Window? _hostWindow;
     private bool _isInitialized;
     private bool _isDisposed;
+    private Task _pendingInput = Task.CompletedTask;
 
     public TerminalView()
     {
@@ -51,7 +62,20 @@ public sealed class TerminalView : UserControl
         remove => RemoveHandler(ShortcutInvokedEvent, value);
     }
 
-    private TerminalPane Pane => (TerminalPane)DataContext;
+    // Kept from the first Loaded: once the pane is removed from its tab, WPF swaps the DataContext
+    // for a placeholder before Unloaded is raised.
+    private TerminalPane Pane => _pane ?? (TerminalPane)DataContext;
+
+    /// <summary>One browser process for all panes; a failed creation is retried by the next pane.</summary>
+    private static Task<CoreWebView2Environment> GetSharedEnvironment()
+    {
+        if (_sharedEnvironment is null || _sharedEnvironment.IsFaulted || _sharedEnvironment.IsCanceled)
+        {
+            _sharedEnvironment = CoreWebView2Environment.CreateAsync(userDataFolder: WebViewDataFolder);
+        }
+
+        return _sharedEnvironment;
+    }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -61,13 +85,40 @@ public sealed class TerminalView : UserControl
         }
 
         _isInitialized = true;
+        _pane = (TerminalPane)DataContext;
 
         // Win32 focus does not return to the WebView2 child window when the user switches back to the app.
         _hostWindow = Window.GetWindow(this);
         _hostWindow?.Activated += OnHostWindowActivated;
-        Pane.PropertyChanged += OnPanePropertyChanged;
+        _pane.PropertyChanged += OnPanePropertyChanged;
 
-        await _webView.EnsureCoreWebView2Async(await SharedEnvironment.Value);
+        try
+        {
+            var environment = await GetSharedEnvironment();
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            await _webView.EnsureCoreWebView2Async(environment);
+        }
+        catch (Exception exception) when (_isDisposed && exception is ObjectDisposedException or InvalidOperationException)
+        {
+            // The pane was closed while the browser was starting.
+            return;
+        }
+        catch (Exception exception) when (exception is WebView2RuntimeNotFoundException or COMException or IOException or UnauthorizedAccessException)
+        {
+            Content = new TextBlock
+            {
+                Text = $"Impossible d'afficher le terminal (WebView2) : {exception.Message}",
+                Foreground = System.Windows.Media.Brushes.IndianRed,
+                Margin = new Thickness(12),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            return;
+        }
+
         if (_isDisposed)
         {
             return;
@@ -83,6 +134,7 @@ public sealed class TerminalView : UserControl
             Path.Combine(AppContext.BaseDirectory, "wwwroot"),
             CoreWebView2HostResourceAccessKind.DenyCors);
         core.WebMessageReceived += OnWebMessageReceived;
+        core.ProcessFailed += OnProcessFailed;
         core.NewWindowRequested += (_, args) => args.Handled = true;
         core.NavigationStarting += (_, args) => args.Cancel = !IsTerminalPage(args.Uri);
         core.Navigate($"https://{VirtualHostName}/terminal.html");
@@ -90,11 +142,38 @@ public sealed class TerminalView : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         _isDisposed = true;
         _hostWindow?.Activated -= OnHostWindowActivated;
-        Pane.PropertyChanged -= OnPanePropertyChanged;
-        _session?.Dispose();
+        _pane?.PropertyChanged -= OnPanePropertyChanged;
         _webView.Dispose();
+
+        // Before Windows 11 24H2, closing a pseudo console waits for its programs to handle the close event:
+        // off the UI thread, so closing a tab never freezes the window.
+        if (_session is { } session)
+        {
+            _ = Task.Run(session.Dispose);
+        }
+    }
+
+    /// <summary>The renderer died (out of memory, GPU driver): reload the page; the shell keeps running.</summary>
+    private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        if (_isDisposed || _webView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        if (e.ProcessFailedKind is CoreWebView2ProcessFailedKind.RenderProcessExited
+            or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive
+            or CoreWebView2ProcessFailedKind.FrameRenderProcessExited)
+        {
+            _webView.CoreWebView2.Reload();
+        }
     }
 
     private void OnHostWindowActivated(object? sender, EventArgs e) => FocusIfActive();
@@ -116,7 +195,17 @@ public sealed class TerminalView : UserControl
         {
             case MessageType.Ready:
                 SendShortcutsToPage();
-                StartSession(new TerminalSize(message.Cols, message.Rows));
+                if (_session is null)
+                {
+                    StartSession(new TerminalSize(message.Cols, message.Rows));
+                }
+                else
+                {
+                    // The page was reloaded after a renderer crash: its size may differ from the old one.
+                    ResizeSession(new TerminalSize(message.Cols, message.Rows));
+                    WriteToTerminal("\x1b[90m[affichage rechargé]\x1b[0m\r\n");
+                }
+
                 break;
             case MessageType.Shortcut when message.Index >= 0 && message.Index < Shortcuts.All.Count:
                 RaiseEvent(new ShortcutInvokedEventArgs(ShortcutInvokedEvent, Shortcuts.All[message.Index]));
@@ -128,7 +217,7 @@ public sealed class TerminalView : UserControl
                 WriteInput(message.Data);
                 break;
             case MessageType.Resize:
-                _session?.Resize(new TerminalSize(message.Cols, message.Rows));
+                ResizeSession(new TerminalSize(message.Cols, message.Rows));
                 break;
             case MessageType.Focus:
                 Pane.RequestActivation();
@@ -165,18 +254,37 @@ public sealed class TerminalView : UserControl
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 size);
         }
-        catch (System.ComponentModel.Win32Exception exception)
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or COMException or ArgumentException)
         {
             WriteToTerminal($"\x1b[31mImpossible de démarrer {Pane.Profile.CommandLine} : {exception.Message}\x1b[0m\r\n");
-            Pane.MarkExited(exception.NativeErrorCode, TimeSpan.Zero);
+            Pane.MarkExited(exception is System.ComponentModel.Win32Exception win32 ? win32.NativeErrorCode : exception.HResult, TimeSpan.Zero);
             return;
         }
 
         var session = _session;
         Pane.TrackRunningCommands(() => session.HasRunningCommand);
-        _ = Task.Run(() => PumpOutput(session));
+
+        // The read blocks for the whole life of the shell: a dedicated thread rather than one taken from the pool.
+        new Thread(() => PumpOutput(session)) { IsBackground = true, Name = "Pupitre output pump" }.Start();
         _ = ReportExitAsync(session);
         FocusIfActive();
+    }
+
+    private void ResizeSession(TerminalSize size)
+    {
+        if (_session is null || size.Columns <= 0 || size.Rows <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _session.Resize(size);
+        }
+        catch (Exception exception) when (exception is COMException or ArgumentException)
+        {
+            // A refused size keeps the previous one; the next resize will try again.
+        }
     }
 
     private void PumpOutput(PtySession session)
@@ -191,13 +299,54 @@ public sealed class TerminalView : UserControl
             while ((read = session.Output.Read(bytes)) > 0)
             {
                 var charCount = decoder.GetChars(bytes, 0, read, chars, 0);
-                var text = new string(chars, 0, charCount);
-                Dispatcher.InvokeAsync(() => WriteToTerminal(text));
+                QueueOutput(chars.AsSpan(0, charCount));
             }
         }
         catch (Exception exception) when (exception is IOException or ObjectDisposedException)
         {
             // Disposing the session closes the pipe under the pending read: this is the normal end of the pump.
+        }
+    }
+
+    /// <summary>
+    /// Coalesces output into a single pending dispatcher operation, so a flood (<c>yes</c>, a large <c>cat</c>)
+    /// cannot pile up work ahead of the user's input, Ctrl+C included. Called from the pump thread.
+    /// </summary>
+    private void QueueOutput(ReadOnlySpan<char> text)
+    {
+        lock (_pendingOutput)
+        {
+            while (_pendingOutput.Length >= MaxPendingOutput && !_isDisposed)
+            {
+                Monitor.Wait(_pendingOutput, TimeSpan.FromMilliseconds(100));
+            }
+
+            _pendingOutput.Append(text);
+            if (_isFlushScheduled)
+            {
+                return;
+            }
+
+            _isFlushScheduled = true;
+        }
+
+        Dispatcher.InvokeAsync(FlushOutput, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void FlushOutput()
+    {
+        string text;
+        lock (_pendingOutput)
+        {
+            text = _pendingOutput.ToString();
+            _pendingOutput.Clear();
+            _isFlushScheduled = false;
+            Monitor.PulseAll(_pendingOutput);
+        }
+
+        if (text.Length > 0)
+        {
+            WriteToTerminal(text);
         }
     }
 
@@ -210,19 +359,44 @@ public sealed class TerminalView : UserControl
             return;
         }
 
-        WriteToTerminal($"\r\n\x1b[90m[processus terminé, code {code}]\x1b[0m\r\n");
-        Pane.MarkExited(code, Stopwatch.GetElapsedTime(startedAt));
-    }
-
-    private void WriteInput(string data)
-    {
-        if (_session is null)
+        var lifetime = Stopwatch.GetElapsedTime(startedAt);
+        await Task.Delay(ExitFlushDelay);
+        if (_isDisposed)
         {
             return;
         }
 
-        _session.Input.Write(Encoding.UTF8.GetBytes(data));
-        _session.Input.Flush();
+        FlushOutput();
+        WriteToTerminal($"\r\n\x1b[90m[processus terminé, code {code}]\x1b[0m\r\n");
+        Pane.MarkExited(code, lifetime);
+    }
+
+    private void WriteInput(string data)
+    {
+        if (_session is not { } session)
+        {
+            return;
+        }
+
+        // The input pipe holds a few KB: a large paste into a busy program would block until it reads,
+        // so the write happens off the UI thread. Writes stay in order: each waits for the previous one.
+        var bytes = Encoding.UTF8.GetBytes(data);
+        _pendingInput = _pendingInput.ContinueWith(
+            _ =>
+            {
+                try
+                {
+                    session.Input.Write(bytes);
+                    session.Input.Flush();
+                }
+                catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+                {
+                    // The shell is gone: its input no longer matters.
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
     }
 
     private void WriteToTerminal(string text)
@@ -268,6 +442,11 @@ public sealed class TerminalView : UserControl
             shift = shortcut.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift),
             character = shortcut.Character?.ToString(),
         });
+        if (_isDisposed || _webView.CoreWebView2 is null)
+        {
+            return;
+        }
+
         _ = _webView.CoreWebView2.ExecuteScriptAsync($"setShortcuts({JsonSerializer.Serialize(chords)})");
     }
 
@@ -327,6 +506,12 @@ public sealed class TerminalView : UserControl
         if (PasteGuard.RequiresConfirmation(text, bracketedPasteMode) && !ConfirmPaste(text, bracketedPasteMode))
         {
             FocusTerminal();
+            return;
+        }
+
+        // The confirmation box runs a message loop: the pane may have been closed meanwhile.
+        if (_isDisposed || _webView.CoreWebView2 is null)
+        {
             return;
         }
 

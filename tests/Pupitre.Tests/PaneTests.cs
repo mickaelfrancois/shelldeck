@@ -130,14 +130,15 @@ public sealed class PaneTests
     [Fact]
     public void Moving_right_goes_to_the_pane_sharing_the_longest_edge()
     {
-        var tab = CreateSplitTab(out var main, out var right);
+        var tab = CreateSplitTab(out var main, out _);
         tab.Split(SplitDirection.Down);
+        var bottomRight = tab.ActivePane;
         tab.Splits[1].Ratio = 0.3;
         main.RequestActivation();
 
         tab.MoveFocus(PaneDirection.Right);
 
-        Assert.NotSame(right, tab.ActivePane);
+        Assert.Same(bottomRight, tab.ActivePane);
     }
 
     [Fact]
@@ -207,5 +208,29 @@ public sealed class PaneTests
     public void AltGr_types_characters_instead_of_triggering_a_shortcut()
     {
         Assert.Null(Shortcuts.Find(Key.D, ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift));
+    }
+
+    [Fact]
+    public void A_side_pane_taking_over_keeps_its_own_exit_code()
+    {
+        var tab = CreateSplitTab(out var main, out var side);
+        side.MarkExited(exitCode: 255, lifetime: TimeSpan.FromSeconds(1));
+
+        tab.ClosePane(main);
+
+        Assert.Equal((side, "Processus terminé (code 255)"), (tab.MainPane, tab.Subtitle));
+    }
+
+    [Fact]
+    public void An_exit_reported_after_the_pane_was_closed_leaves_the_tab_alone()
+    {
+        var tab = CreateSplitTab(out _, out var side);
+        var ended = false;
+        tab.Ended += (_, _) => ended = true;
+        tab.ClosePane(side);
+
+        side.MarkExited(exitCode: 0, lifetime: TimeSpan.FromMinutes(5));
+
+        Assert.False(ended);
     }
 }

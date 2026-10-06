@@ -15,7 +15,8 @@ public sealed class PtySession : IDisposable
 {
     private readonly IntPtr _pseudoConsole;
     private readonly ProcessExitWaitHandle _processExit;
-    private bool _disposed;
+    private RegisteredWaitHandle? _exitWait;
+    private volatile bool _disposed;
 
     private PtySession(IntPtr pseudoConsole, Stream input, Stream output, ProcessExitWaitHandle processExit, int processId)
     {
@@ -37,31 +38,55 @@ public sealed class PtySession : IDisposable
 
     public static PtySession Start(string commandLine, string? workingDirectory, TerminalSize size)
     {
-        CreatePipeOrThrow(out var consoleInputRead, out var inputWrite);
-        CreatePipeOrThrow(out var outputRead, out var consoleOutputWrite);
+        SafeFileHandle? consoleInputRead = null, inputWrite = null, outputRead = null, consoleOutputWrite = null;
+        var pseudoConsole = IntPtr.Zero;
 
-        var result = CreatePseudoConsole(size.ToCoord(), consoleInputRead, consoleOutputWrite, 0, out var pseudoConsole);
-        Marshal.ThrowExceptionForHR(result);
+        try
+        {
+            CreatePipeOrThrow(out consoleInputRead, out inputWrite);
+            CreatePipeOrThrow(out outputRead, out consoleOutputWrite);
 
-        // ConPTY duplicated its ends of the pipes; keeping ours would prevent EOF on the output pipe.
-        consoleInputRead.Dispose();
-        consoleOutputWrite.Dispose();
+            var result = CreatePseudoConsole(size.ToCoord(), consoleInputRead, consoleOutputWrite, 0, out pseudoConsole);
+            if (result < 0)
+            {
+                pseudoConsole = IntPtr.Zero;
+                throw new Win32Exception(result);
+            }
 
-        var process = StartAttachedProcess(commandLine, workingDirectory, pseudoConsole);
+            // ConPTY duplicated its ends of the pipes; keeping ours would prevent EOF on the output pipe.
+            consoleInputRead.Dispose();
+            consoleOutputWrite.Dispose();
 
-        return new PtySession(
-            pseudoConsole,
-            new FileStream(inputWrite, FileAccess.Write),
-            new FileStream(outputRead, FileAccess.Read),
-            new ProcessExitWaitHandle(process.hProcess),
-            process.dwProcessId);
+            var process = StartAttachedProcess(commandLine, workingDirectory, pseudoConsole);
+
+            return new PtySession(
+                pseudoConsole,
+                new FileStream(inputWrite, FileAccess.Write),
+                new FileStream(outputRead, FileAccess.Read),
+                new ProcessExitWaitHandle(process.hProcess),
+                process.dwProcessId);
+        }
+        catch
+        {
+            // Otherwise each failed start (e.g. a shell uninstalled since discovery) leaves a conhost running.
+            if (pseudoConsole != IntPtr.Zero)
+            {
+                ClosePseudoConsole(pseudoConsole);
+            }
+
+            consoleInputRead?.Dispose();
+            inputWrite?.Dispose();
+            outputRead?.Dispose();
+            consoleOutputWrite?.Dispose();
+            throw;
+        }
     }
 
     /// <returns>The exit code of the process, or null when the session was disposed first.</returns>
     public Task<int?> WaitForExitAsync()
     {
         var completion = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        ThreadPool.RegisterWaitForSingleObject(
+        _exitWait = ThreadPool.RegisterWaitForSingleObject(
             _processExit,
             (_, _) => completion.TrySetResult(TryReadExitCode()),
             null,
@@ -77,7 +102,11 @@ public sealed class PtySession : IDisposable
             return;
         }
 
-        Marshal.ThrowExceptionForHR(ResizePseudoConsole(_pseudoConsole, size.ToCoord()));
+        var result = ResizePseudoConsole(_pseudoConsole, size.ToCoord());
+        if (result < 0)
+        {
+            throw new Win32Exception(result);
+        }
     }
 
     public void Dispose()
@@ -94,11 +123,18 @@ public sealed class PtySession : IDisposable
         ClosePseudoConsole(_pseudoConsole);
         Input.Dispose();
         Output.Dispose();
+        _exitWait?.Unregister(null);
         _processExit.Dispose();
     }
 
     private int? TryReadExitCode()
     {
+        // Once disposed, SafeWaitHandle hands back an invalid handle (-1), which Windows reads as this very process.
+        if (_disposed)
+        {
+            return null;
+        }
+
         try
         {
             return GetExitCodeProcess(_processExit.SafeWaitHandle, out var exitCode) ? exitCode : null;

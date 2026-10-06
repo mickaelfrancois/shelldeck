@@ -40,6 +40,8 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
 
     public bool IsExited { get; private set; }
 
+    public int ExitCode { get; private set; }
+
     /// <summary>The last title the shell set, kept so a side pane can take over as main pane.</summary>
     internal string TerminalTitle { get; private set; } = string.Empty;
 
@@ -76,6 +78,7 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
     public void MarkExited(int exitCode, TimeSpan lifetime)
     {
         IsExited = true;
+        ExitCode = exitCode;
         _owner.OnPaneExited(this, exitCode, lifetime);
     }
 
