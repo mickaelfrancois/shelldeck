@@ -150,4 +150,14 @@ public sealed class MainViewModelTests
 
         Assert.Equal(Ubuntu, viewModel.SelectedTab?.Profile);
     }
+
+    [Fact]
+    public void A_new_tab_opens_the_default_profile_right_away()
+    {
+        var viewModel = CreateViewModel(new AppSettings(DefaultProfileName: "docker01"));
+
+        viewModel.OpenDefault();
+
+        Assert.Equal(Docker01, viewModel.SelectedTab?.Profile);
+    }
 }

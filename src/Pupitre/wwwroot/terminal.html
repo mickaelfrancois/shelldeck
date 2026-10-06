@@ -81,12 +81,21 @@
       post({ type: 'paste', fromKeyboard, bracketedPasteMode: term.modes.bracketedPasteMode });
     const isCtrlKey = (event, key) => event.ctrlKey && !event.altKey && event.key.toLowerCase() === key;
 
-    // Application shortcuts, sent by the host once the page is ready: [{ code, shift }], identified by position.
+    // Application shortcuts, sent by the host once the page is ready: [{ code, ctrl, alt, shift, character }],
+    // identified by position. Modifiers must match exactly, so AltGr (Ctrl+Alt) keeps typing characters.
     let shortcuts = [];
-    window.setShortcuts = list => { shortcuts = list; };
-    const findShortcut = event => event.ctrlKey && !event.altKey
-      ? shortcuts.findIndex(shortcut => shortcut.code === event.code && shortcut.shift === event.shiftKey)
-      : -1;
+    window.setShortcuts = async list => {
+      shortcuts = list;
+      // A shortcut on a character ("-") uses the key typing it in this layout: Digit6 in AZERTY, Minus in QWERTY.
+      if (!navigator.keyboard?.getLayoutMap) return;
+      const layout = await navigator.keyboard.getLayoutMap();
+      for (const shortcut of list.filter(shortcut => shortcut.character)) {
+        const entry = [...layout].find(([, character]) => character === shortcut.character);
+        if (entry) shortcut.code = entry[0];
+      }
+    };
+    const findShortcut = event => shortcuts.findIndex(shortcut => shortcut.code === event.code
+      && shortcut.ctrl === event.ctrlKey && shortcut.alt === event.altKey && shortcut.shift === event.shiftKey);
 
     term.attachCustomKeyEventHandler(event => {
       if (event.type !== 'keydown') return true;
@@ -138,6 +147,9 @@
     };
 
     window.focusTerminal = () => term.focus();
+
+    // Clicking into a split pane makes it the active one.
+    container.addEventListener('focusin', () => post({ type: 'focus' }));
     post({ type: 'ready', cols: term.cols, rows: term.rows });
   </script>
 </body>

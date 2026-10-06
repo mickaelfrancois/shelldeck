@@ -6,6 +6,8 @@ namespace Pupitre;
 
 public static class Converters
 {
+    public static IValueConverter Not { get; } = new NotConverter();
+
     public static IValueConverter TrueToVisible { get; } = new VisibilityConverter(value => value is true);
 
     public static IValueConverter PositiveToVisible { get; } = new VisibilityConverter(value => value is > 0);
@@ -22,6 +24,13 @@ public static class Converters
 
         public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class NotConverter : IValueConverter
+    {
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
+
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
     }
 
     private sealed class VisibilityConverter(Func<object?, bool> isVisible) : IValueConverter

@@ -71,6 +71,13 @@ public partial class MainWindow : Window
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Escape && ShortcutHelpPopup.IsOpen)
+        {
+            ShortcutHelpPopup.IsOpen = false;
+            e.Handled = true;
+            return;
+        }
+
         if (Shortcuts.Find(key, Keyboard.Modifiers) is { } shortcut)
         {
             Execute(shortcut);
@@ -83,10 +90,10 @@ public partial class MainWindow : Window
         switch (shortcut.Action)
         {
             case ShortcutAction.NewTab:
-                FocusLauncherFilter();
+                _viewModel.OpenDefault();
                 break;
-            case ShortcutAction.CloseTab when _viewModel.SelectedTab is { } tab:
-                CloseTab(tab);
+            case ShortcutAction.ClosePane when _viewModel.SelectedTab is { } tab:
+                ClosePane(tab, tab.ActivePane);
                 break;
             case ShortcutAction.NextTab:
                 _viewModel.SelectNextTab();
@@ -97,7 +104,69 @@ public partial class MainWindow : Window
             case ShortcutAction.SelectTab:
                 _viewModel.SelectTabByNumber(shortcut.TabNumber);
                 break;
+            case ShortcutAction.SplitRight:
+                _viewModel.SelectedTab?.Split(SplitDirection.Right);
+                break;
+            case ShortcutAction.SplitDown:
+                _viewModel.SelectedTab?.Split(SplitDirection.Down);
+                break;
+            case ShortcutAction.SplitAuto when _viewModel.SelectedTab is { } tab:
+                tab.Split(LongerSide(tab.ActivePane));
+                break;
+            case ShortcutAction.FocusPaneLeft:
+                _viewModel.SelectedTab?.MoveFocus(PaneDirection.Left);
+                break;
+            case ShortcutAction.FocusPaneUp:
+                _viewModel.SelectedTab?.MoveFocus(PaneDirection.Up);
+                break;
+            case ShortcutAction.FocusPaneRight:
+                _viewModel.SelectedTab?.MoveFocus(PaneDirection.Right);
+                break;
+            case ShortcutAction.FocusPaneDown:
+                _viewModel.SelectedTab?.MoveFocus(PaneDirection.Down);
+                break;
+            case ShortcutAction.ResizePaneLeft:
+                _viewModel.SelectedTab?.MoveDivider(PaneDirection.Left);
+                break;
+            case ShortcutAction.ResizePaneUp:
+                _viewModel.SelectedTab?.MoveDivider(PaneDirection.Up);
+                break;
+            case ShortcutAction.ResizePaneRight:
+                _viewModel.SelectedTab?.MoveDivider(PaneDirection.Right);
+                break;
+            case ShortcutAction.ResizePaneDown:
+                _viewModel.SelectedTab?.MoveDivider(PaneDirection.Down);
+                break;
         }
+    }
+
+    /// <summary>As Windows Terminal: splitting along the longer side keeps both panes as square as possible.</summary>
+    private SplitDirection LongerSide(TerminalPane pane) =>
+        pane.Bounds.Width * TerminalArea.ActualWidth >= pane.Bounds.Height * TerminalArea.ActualHeight
+            ? SplitDirection.Right
+            : SplitDirection.Down;
+
+    private void ClosePane(TerminalTab tab, TerminalPane pane)
+    {
+        if (!tab.IsSplit)
+        {
+            CloseTab(tab);
+            return;
+        }
+
+        var interruption = pane.IsMain && tab.IsClaudeSession ? "Claude Code sera interrompu." : "La commande en cours sera interrompue.";
+        if (pane.HasActivity && !Confirm($"Fermer ce volet ?\n\n{interruption}"))
+        {
+            return;
+        }
+
+        tab.ClosePane(pane);
+    }
+
+    private void OnSplitterDragged(object sender, DragDeltaEventArgs e)
+    {
+        var split = DataContextOf<PaneSplit>(sender);
+        split.MoveDivider(new Vector(e.HorizontalChange / TerminalArea.ActualWidth, e.VerticalChange / TerminalArea.ActualHeight));
     }
 
     private void CloseTab(TerminalTab tab)
@@ -157,14 +226,7 @@ public partial class MainWindow : Window
             WindowState == WindowState.Maximized));
 
     private void OnNewTabClicked(object sender, RoutedEventArgs e) =>
-        FocusLauncherFilter();
-
-    private void FocusLauncherFilter()
-    {
-        // When the terminal has the keyboard, Win32 focus is in the WebView2 child window: take it back first.
-        SetFocus(new WindowInteropHelper(this).Handle);
-        FilterBox.Focus();
-    }
+        _viewModel.OpenDefault();
 
     private void OnTogglePanelSideClicked(object sender, RoutedEventArgs e) =>
         _viewModel.TogglePanelSide();
@@ -189,6 +251,7 @@ public partial class MainWindow : Window
         if (AttentionToast.DataContext is TerminalTab tab)
         {
             _viewModel.SelectedTab = tab;
+            tab.Activate(tab.MainPane);
         }
     }
 
@@ -219,9 +282,6 @@ public partial class MainWindow : Window
     }
 
     private static T DataContextOf<T>(object sender) => (T)((FrameworkElement)sender).DataContext;
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetFocus(IntPtr hWnd);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int valueSize);

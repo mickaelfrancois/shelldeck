@@ -13,8 +13,8 @@ using Pupitre.ViewModels;
 namespace Pupitre.Terminal;
 
 /// <summary>
-/// Renders one <see cref="TerminalTab"/>: xterm.js (in WebView2) emulates the terminal,
-/// a <see cref="PtySession"/> runs the shell. Expects a <see cref="TerminalTab"/> as DataContext.
+/// Renders one <see cref="TerminalPane"/>: xterm.js (in WebView2) emulates the terminal,
+/// a <see cref="PtySession"/> runs the shell. Expects a <see cref="TerminalPane"/> as DataContext.
 /// </summary>
 public sealed class TerminalView : UserControl
 {
@@ -51,7 +51,7 @@ public sealed class TerminalView : UserControl
         remove => RemoveHandler(ShortcutInvokedEvent, value);
     }
 
-    private TerminalTab Tab => (TerminalTab)DataContext;
+    private TerminalPane Pane => (TerminalPane)DataContext;
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -65,6 +65,7 @@ public sealed class TerminalView : UserControl
         // Win32 focus does not return to the WebView2 child window when the user switches back to the app.
         _hostWindow = Window.GetWindow(this);
         _hostWindow?.Activated += OnHostWindowActivated;
+        Pane.PropertyChanged += OnPanePropertyChanged;
 
         await _webView.EnsureCoreWebView2Async(await SharedEnvironment.Value);
         if (_isDisposed)
@@ -91,23 +92,20 @@ public sealed class TerminalView : UserControl
     {
         _isDisposed = true;
         _hostWindow?.Activated -= OnHostWindowActivated;
+        Pane.PropertyChanged -= OnPanePropertyChanged;
         _session?.Dispose();
         _webView.Dispose();
     }
 
-    private void OnHostWindowActivated(object? sender, EventArgs e)
-    {
-        if (IsVisible)
-        {
-            FocusTerminal();
-        }
-    }
+    private void OnHostWindowActivated(object? sender, EventArgs e) => FocusIfActive();
 
-    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => FocusIfActive();
+
+    private void OnPanePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.NewValue is true)
+        if (e.PropertyName == nameof(TerminalPane.IsActive))
         {
-            FocusTerminal();
+            FocusIfActive();
         }
     }
 
@@ -132,14 +130,17 @@ public sealed class TerminalView : UserControl
             case MessageType.Resize:
                 _session?.Resize(new TerminalSize(message.Cols, message.Rows));
                 break;
+            case MessageType.Focus:
+                Pane.RequestActivation();
+                break;
             case MessageType.Title:
-                Tab.ApplyTerminalTitle(message.Title ?? string.Empty);
+                Pane.ApplyTerminalTitle(message.Title ?? string.Empty);
                 break;
             case MessageType.Bell:
-                Tab.ReceiveBell();
+                Pane.ReceiveBell();
                 break;
             case MessageType.Notification when !string.IsNullOrWhiteSpace(message.Data):
-                Tab.ReceiveNotification(message.Data);
+                Pane.ReceiveNotification(message.Data);
                 break;
             case MessageType.Copy when !string.IsNullOrEmpty(message.Data):
                 CopyToClipboard(message.Data);
@@ -160,22 +161,22 @@ public sealed class TerminalView : UserControl
         try
         {
             _session = PtySession.Start(
-                Tab.Profile.CommandLine,
+                Pane.Profile.CommandLine,
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 size);
         }
         catch (System.ComponentModel.Win32Exception exception)
         {
-            WriteToTerminal($"\x1b[31mImpossible de démarrer {Tab.Profile.CommandLine} : {exception.Message}\x1b[0m\r\n");
-            Tab.MarkExited(exception.NativeErrorCode, TimeSpan.Zero);
+            WriteToTerminal($"\x1b[31mImpossible de démarrer {Pane.Profile.CommandLine} : {exception.Message}\x1b[0m\r\n");
+            Pane.MarkExited(exception.NativeErrorCode, TimeSpan.Zero);
             return;
         }
 
         var session = _session;
-        Tab.TrackRunningCommands(() => session.HasRunningCommand);
+        Pane.TrackRunningCommands(() => session.HasRunningCommand);
         _ = Task.Run(() => PumpOutput(session));
         _ = ReportExitAsync(session);
-        FocusTerminal();
+        FocusIfActive();
     }
 
     private void PumpOutput(PtySession session)
@@ -210,7 +211,7 @@ public sealed class TerminalView : UserControl
         }
 
         WriteToTerminal($"\r\n\x1b[90m[processus terminé, code {code}]\x1b[0m\r\n");
-        Tab.MarkExited(code, Stopwatch.GetElapsedTime(startedAt));
+        Pane.MarkExited(code, Stopwatch.GetElapsedTime(startedAt));
     }
 
     private void WriteInput(string data)
@@ -234,6 +235,15 @@ public sealed class TerminalView : UserControl
         _webView.CoreWebView2.PostWebMessageAsString(text);
     }
 
+    /// <summary>In a split tab, only the active pane takes the keyboard.</summary>
+    private void FocusIfActive()
+    {
+        if (IsVisible && Pane.IsActive)
+        {
+            FocusTerminal();
+        }
+    }
+
     private void FocusTerminal()
     {
         if (_isDisposed || _webView.CoreWebView2 is null)
@@ -250,7 +260,14 @@ public sealed class TerminalView : UserControl
 
     private void SendShortcutsToPage()
     {
-        var chords = Shortcuts.All.Select(shortcut => new { code = shortcut.KeyCode, shift = shortcut.Shift });
+        var chords = Shortcuts.All.Select(shortcut => new
+        {
+            code = shortcut.KeyCode,
+            ctrl = shortcut.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control),
+            alt = shortcut.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Alt),
+            shift = shortcut.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift),
+            character = shortcut.Character?.ToString(),
+        });
         _ = _webView.CoreWebView2.ExecuteScriptAsync($"setShortcuts({JsonSerializer.Serialize(chords)})");
     }
 
@@ -363,6 +380,7 @@ public sealed class TerminalView : UserControl
         public const string Paste = "paste";
         public const string Shortcut = "shortcut";
         public const string OpenLink = "open-link";
+        public const string Focus = "focus";
     }
 }
 

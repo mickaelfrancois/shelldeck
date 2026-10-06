@@ -31,6 +31,39 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Divider between two panes: drawn in the 4 px gap left between their terminals. -->
+        <Style x:Key="PaneSplitterStyle" TargetType="Thumb">
+            <Setter Property="Width" Value="4" />
+            <Setter Property="Cursor" Value="SizeWE" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="Transparent">
+                            <Border x:Name="Line" Background="{StaticResource LineBrush}" Width="1" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Direction}" Value="{x:Static viewModels:SplitDirection.Down}">
+                                <Setter TargetName="Line" Property="Width" Value="NaN" />
+                                <Setter TargetName="Line" Property="Height" Value="1" />
+                            </DataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Line" Property="Background" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Line" Property="Background" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Direction}" Value="{x:Static viewModels:SplitDirection.Down}">
+                    <Setter Property="Width" Value="NaN" />
+                    <Setter Property="Height" Value="4" />
+                    <Setter Property="Cursor" Value="SizeNS" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <DockPanel>
@@ -50,6 +83,55 @@
             </Border.Style>
 
             <DockPanel>
+                <!-- Footer: application-level actions (keyboard reference, later the settings). -->
+                <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="8,6">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- Not clickable while open: the click that closes the popup would otherwise reopen it. -->
+                        <ToggleButton x:Name="ShortcutHelpButton" Style="{StaticResource IconButtonStyle}" Width="26" Height="26"
+                                      Content="&#xE765;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                                      ToolTip="Raccourcis clavier" AutomationProperties.Name="Raccourcis clavier"
+                                      IsChecked="{Binding IsOpen, ElementName=ShortcutHelpPopup}"
+                                      IsHitTestVisible="{Binding IsOpen, ElementName=ShortcutHelpPopup, Converter={x:Static pupitre:Converters.Not}}" />
+                    </StackPanel>
+                </Border>
+
+                <Popup x:Name="ShortcutHelpPopup" PlacementTarget="{Binding ElementName=ShortcutHelpButton}" Placement="Top"
+                       VerticalOffset="-6" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                    <Border Width="440" Margin="0,0,16,16" Padding="16,12,16,14"
+                            Background="{StaticResource ChromeRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.5" />
+                        </Border.Effect>
+                        <StackPanel>
+                            <TextBlock Text="Raccourcis clavier" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,4" />
+                            <ItemsControl ItemsSource="{x:Static pupitre:ShortcutHelp.Sections}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,10,0,0">
+                                            <TextBlock Text="{Binding Title}" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,4" />
+                                            <ItemsControl ItemsSource="{Binding Entries}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,2">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="180" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding Keys}" FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                                                       Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" Margin="0,0,12,0" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="12" TextWrapping="Wrap" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
                 <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,10">
                     <StackPanel>
                         <TextBlock Text="NOUVEAU TERMINAL" Style="{StaticResource SectionHeaderStyle}" Margin="12,0,12,8" />
@@ -213,7 +295,7 @@
                                         </TextBlock.RenderTransform>
                                     </TextBlock>
                                     <Button x:Name="CloseButton" Style="{StaticResource IconButtonStyle}" Content="✕" FontSize="10"
-                                            ToolTip="Fermer (Ctrl+Maj+W)" Click="OnCloseTabClicked" Visibility="Collapsed" />
+                                            ToolTip="Fermer l'onglet" Click="OnCloseTabClicked" Visibility="Collapsed" />
                                 </Grid>
                             </Grid>
                             <DataTemplate.Triggers>
@@ -255,7 +337,7 @@
             </DockPanel>
         </Border>
 
-        <!-- Every terminal stays alive here; only the selected one is shown. -->
+        <!-- Every terminal stays alive here; only the selected tab is shown. -->
         <Grid x:Name="TerminalArea" Background="{StaticResource TerminalBackgroundBrush}">
             <TextBlock Text="Aucun onglet ouvert. Choisissez un shell en bas du panneau." Foreground="{StaticResource MutedForegroundBrush}"
                        FontFamily="{StaticResource MonoFont}" Margin="12,10"
@@ -267,11 +349,11 @@
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <terminal:TerminalView>
-                            <terminal:TerminalView.Style>
-                                <Style TargetType="terminal:TerminalView">
-                                    <!-- Hidden, not Collapsed: the terminal keeps its size, so xterm.js does not reflow on tab switch. -->
+                    <DataTemplate DataType="{x:Type viewModels:TerminalTab}">
+                        <Grid>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <!-- Hidden, not Collapsed: the terminals keep their size, so xterm.js does not reflow on tab switch. -->
                                     <Setter Property="Visibility" Value="Hidden" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsSelected}" Value="True">
@@ -279,8 +361,61 @@
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </terminal:TerminalView.Style>
-                        </terminal:TerminalView>
+                            </Grid.Style>
+
+                            <ItemsControl ItemsSource="{Binding Panes}" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <pupitre:FractionalPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="pupitre:FractionalPanel.Bounds" Value="{Binding Bounds}" />
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type viewModels:TerminalPane}">
+                                        <!-- The border sits around the terminal, not over it: WPF cannot draw over WebView2 (airspace). -->
+                                        <Border Margin="2" BorderThickness="1">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsActive}" Value="True" />
+                                                                <Condition Binding="{Binding DataContext.IsSplit, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="True" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <terminal:TerminalView />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <ItemsControl ItemsSource="{Binding Splits}" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <pupitre:FractionalPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="pupitre:FractionalPanel.Bounds" Value="{Binding Bounds}" />
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type viewModels:PaneSplit}">
+                                        <Thumb Style="{StaticResource PaneSplitterStyle}" DragDelta="OnSplitterDragged" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

@@ -144,16 +144,21 @@ public sealed class MainViewModel : ObservableObject
         FilterText = string.Empty;
     }
 
+    /// <summary>A new tab without choosing: the default profile, as Windows Terminal's Ctrl+Shift+T.</summary>
+    public void OpenDefault()
+    {
+        if (DefaultProfile is { } defaultProfile)
+        {
+            Open(defaultProfile);
+        }
+    }
+
     /// <summary>Opens the first shell, else the first SSH connection, matching the filter; the default profile when there is no filter.</summary>
     public void OpenFirstMatch()
     {
         if (!IsFiltering)
         {
-            if (DefaultProfile is { } defaultProfile)
-            {
-                Open(defaultProfile);
-            }
-
+            OpenDefault();
             return;
         }
 
