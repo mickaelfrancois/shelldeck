@@ -1,0 +1,149 @@
+<title>Nom et icône de Term</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@600;700&display=swap">
+<style>
+  /* Layout: two stacked choice grids (names, then icons rendered at real sizes) on the app's own dark chrome. */
+  :root {
+    color-scheme: dark;
+    --canvas: #121317;
+    --card: #1b1c22;
+    --card-selected: #262836;
+    --line: #2f3039;
+    --fg: #e4e5ea;
+    --fg-muted: #8b8d99;
+    --accent: #6ea8fe;
+    --attention: #f0b43c;
+    --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  body { background: var(--canvas); color: var(--fg); font-family: var(--font-ui); font-size: 14px; }
+  main { box-sizing: border-box; max-width: 980px; margin: 0 auto; padding: 28px 16px 48px; display: flex; flex-direction: column; gap: 28px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 600; text-wrap: balance; }
+  h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--fg-muted); }
+  p.lead { margin: 6px 0 0; color: var(--fg-muted); max-width: 65ch; line-height: 1.5; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .choice { display: flex; flex-direction: column; gap: 8px; text-align: left; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; cursor: pointer; }
+  .choice:hover { border-color: #444656; }
+  .choice[aria-pressed="true"] { background: var(--card-selected); border-color: var(--accent); }
+  .choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .name { font-size: 24px; font-weight: 600; }
+  .meaning { color: var(--fg-muted); line-height: 1.45; min-width: 0; }
+  .icon-row { display: flex; align-items: flex-end; gap: 14px; }
+  .icon-row svg { display: block; flex: none; }
+  .on-light { display: flex; align-items: flex-end; gap: 10px; padding: 8px; border-radius: 6px; background: #f3f3f5; }
+  .sizes { font-size: 11px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+  .preview { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  .titlebar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; background: #0c0c0e; border: 1px solid var(--line); font-size: 12px; }
+  .taskbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; background: #202020; }
+  .note { color: var(--fg-muted); font-size: 13px; line-height: 1.5; max-width: 70ch; }
+</style>
+
+<main>
+  <header>
+    <h1>Nom et icône</h1>
+    <p class="lead">Choisissez un nom et une icône : l'aperçu en bas montre le résultat dans la barre de titre et la barre des tâches. Le monogramme (icône C) reprend la première lettre du nom choisi.</p>
+  </header>
+
+  <section>
+    <h2>NOM</h2>
+    <div class="grid" id="names"></div>
+  </section>
+
+  <section>
+    <h2>ICÔNE</h2>
+    <div class="grid" id="icons"></div>
+  </section>
+
+  <section>
+    <h2>APERÇU</h2>
+    <div class="preview">
+      <div class="titlebar"><span id="preview-title-icon"></span><span id="preview-title">✳ Revue PR — Vigie</span></div>
+      <div class="taskbar"><span id="preview-taskbar-icon"></span></div>
+    </div>
+  </section>
+
+  <p class="note">Je n'ai pas vérifié si ces noms sont déjà déposés comme marques ou utilisés par un autre terminal. À faire avant toute diffusion hors de l'équipe.</p>
+</main>
+
+<script>
+  const names = [
+    { name: 'Vigie', meaning: 'Le poste de guet : l\'app surveille les onglets et vous prévient quand Claude Code attend.' },
+    { name: 'Relais', meaning: 'Le point de passage entre vos shells locaux, WSL et vos serveurs SSH.' },
+    { name: 'Pupitre', meaning: 'Le pupitre de commande : tous les terminaux sous la main, sur un seul panneau.' },
+    { name: 'Quai', meaning: 'Là où les sessions accostent : court, facile à taper, à prononcer.' },
+  ];
+
+  // Colors of the shell tiles in the app: PowerShell, WSL, SSH.
+  const tileColors = ['#2f6fb3', '#d9541e', '#178a72'];
+
+  const icons = [
+    {
+      id: 'rail',
+      label: 'A · Rail',
+      meaning: 'Le panneau d\'onglets colorés à gauche, le prompt à droite.',
+      svg: () => `
+        <rect width="64" height="64" rx="14" fill="#1b1c22"/>
+        ${tileColors.map((color, i) => `<rect x="9" y="${12 + i * 15}" width="13" height="11" rx="3" fill="${color}"/>`).join('')}
+        <circle cx="21" cy="28" r="4" fill="#f0b43c" stroke="#1b1c22" stroke-width="2"/>
+        <path d="M30 26 l8 6 -8 6" fill="none" stroke="#e4e5ea" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="41" y="36" width="13" height="4" rx="2" fill="#e4e5ea"/>`,
+    },
+    {
+      id: 'signal',
+      label: 'B · Signal',
+      meaning: 'Le prompt et la pastille orange de notification : ce qui distingue l\'app.',
+      svg: () => `
+        <rect width="64" height="64" rx="14" fill="#0c0c0e"/>
+        <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#2f3039" stroke-width="2"/>
+        <path d="M14 22 l13 10 -13 10" fill="none" stroke="#6ea8fe" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="31" y="39" width="17" height="5.5" rx="2.75" fill="#e4e5ea"/>
+        <circle cx="49" cy="15" r="7" fill="#f0b43c"/>`,
+    },
+    {
+      id: 'monogram',
+      label: 'C · Monogramme',
+      meaning: 'La première lettre du nom, avec la barre des trois couleurs de shells.',
+      svg: (letter) => `
+        <rect width="64" height="64" rx="14" fill="#1b1c22"/>
+        ${tileColors.map((color, i) => `<rect x="9" y="${13 + i * 13.5}" width="6" height="11" rx="3" fill="${color}"/>`).join('')}
+        <text x="39" y="45" text-anchor="middle" font-family="JetBrains Mono, Cascadia Mono, Consolas, monospace" font-weight="700" font-size="36" fill="#e4e5ea">${letter}</text>`,
+    },
+  ];
+
+  const state = { name: 'Vigie', icon: 'rail' };
+  const $ = (id) => document.getElementById(id);
+  const iconSvg = (icon, size) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 64 64" role="img" aria-label="${icon.label}">${icon.svg(state.name[0])}</svg>`;
+
+  function choiceButton(selected, onSelect, html) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'choice';
+    button.setAttribute('aria-pressed', selected);
+    button.innerHTML = html;
+    button.addEventListener('click', onSelect);
+    return button;
+  }
+
+  function render() {
+    $('names').replaceChildren(...names.map(n => choiceButton(
+      n.name === state.name,
+      () => { state.name = n.name; render(); },
+      `<span class="name">${n.name}</span><span class="meaning">${n.meaning}</span>`)));
+
+    $('icons').replaceChildren(...icons.map(icon => choiceButton(
+      icon.id === state.icon,
+      () => { state.icon = icon.id; render(); },
+      `<span class="icon-row">${iconSvg(icon, 64)}${iconSvg(icon, 32)}${iconSvg(icon, 16)}
+         <span class="on-light">${iconSvg(icon, 32)}${iconSvg(icon, 16)}</span></span>
+       <span class="sizes">64 · 32 · 16 px, puis sur fond clair</span>
+       <strong>${icon.label}</strong><span class="meaning">${icon.meaning}</span>`)));
+
+    const icon = icons.find(i => i.id === state.icon);
+    $('preview-title-icon').innerHTML = iconSvg(icon, 16);
+    $('preview-taskbar-icon').innerHTML = iconSvg(icon, 28);
+    $('preview-title').textContent = `✳ Revue PR — ${state.name}`;
+  }
+
+  render();
+</script>

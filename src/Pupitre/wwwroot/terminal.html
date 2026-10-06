@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="xterm.css">
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0c0e; }
+    #terminal { position: absolute; inset: 6px 0 0 8px; }
+    #status { position: absolute; top: 10px; right: 16px; z-index: 10; padding: 6px 10px; border-radius: 6px;
+              background: #24252d; color: #e4e5ea; border: 1px solid #2f3039; font: 12px 'Segoe UI', sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="terminal"></div>
+  <div id="status" hidden></div>
+  <script src="xterm.js"></script>
+  <script src="addon-fit.js"></script>
+  <script src="addon-web-links.js"></script>
+  <script src="addon-webgl.js"></script>
+  <script>
+    const container = document.getElementById('terminal');
+    const term = new Terminal({
+      // Nerd Font first: prompts such as oh-my-posh draw their icons from its private-use glyphs.
+      fontFamily: "'CaskaydiaCove NFM', 'CaskaydiaCove Nerd Font Mono', 'CaskaydiaCove NF', 'Cascadia Mono', Consolas, monospace",
+      fontSize: 14,
+      cursorBlink: true,
+      scrollback: 10000,
+      windowsPty: { backend: 'conpty' },
+      theme: { background: '#0c0c0e' },
+      // OSC 8 hyperlinks (e.g. Claude Code's session link); plain URLs go through the web-links addon below.
+      linkHandler: { activate: (event, uri) => openLink(event, uri) },
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(container);
+    fitAddon.fit();
+
+    // GPU rendering: much faster than the DOM renderer for full-screen redraws (Claude Code, htop).
+    // Without WebGL (old driver, remote desktop), the DOM renderer stays in place.
+    try {
+      const webgl = new WebglAddon.WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch (error) {
+      console.warn('WebGL renderer unavailable, using the DOM renderer', error);
+    }
+
+    const post = message => chrome.webview.postMessage(message);
+
+    // Ctrl+click, as in VS Code: a plain click must stay free for selecting text (which copies it).
+    function openLink(event, uri) {
+      if (event.ctrlKey) post({ type: 'open-link', data: uri });
+    }
+    term.loadAddon(new WebLinksAddon.WebLinksAddon(openLink));
+    term.onData(data => post({ type: 'input', data }));
+    term.onResize(({ cols, rows }) => post({ type: 'resize', cols, rows }));
+    term.onTitleChange(title => post({ type: 'title', title }));
+    term.onBell(() => post({ type: 'bell' }));
+
+    // Desktop notification sequences: OSC 9 (iTerm2; "9;..." is ConEmu's cwd report, not a message)
+    // and OSC 777 ("notify;title;body", used by Ghostty).
+    term.parser.registerOscHandler(9, data => {
+      if (!/^\d+;/.test(data)) post({ type: 'notification', data });
+      return true;
+    });
+    term.parser.registerOscHandler(777, data => {
+      const [command, title, body] = data.split(';');
+      if (command === 'notify') post({ type: 'notification', data: body || title });
+      return true;
+    });
+    chrome.webview.addEventListener('message', event => term.write(event.data));
+    new ResizeObserver(() => fitAddon.fit()).observe(container);
+
+    // Clipboard: handled here, not by the shell, so it behaves the same in every kind of terminal.
+    // The host owns the system clipboard (no browser permission involved); the page only reports intents.
+    const copySelection = () => {
+      const text = term.getSelection();
+      if (text) post({ type: 'copy', data: text });
+    };
+    const requestPaste = fromKeyboard =>
+      post({ type: 'paste', fromKeyboard, bracketedPasteMode: term.modes.bracketedPasteMode });
+    const isCtrlKey = (event, key) => event.ctrlKey && !event.altKey && event.key.toLowerCase() === key;
+
+    // Application shortcuts, sent by the host once the page is ready: [{ code, shift }], identified by position.
+    let shortcuts = [];
+    window.setShortcuts = list => { shortcuts = list; };
+    const findShortcut = event => event.ctrlKey && !event.altKey
+      ? shortcuts.findIndex(shortcut => shortcut.code === event.code && shortcut.shift === event.shiftKey)
+      : -1;
+
+    term.attachCustomKeyEventHandler(event => {
+      if (event.type !== 'keydown') return true;
+      const shortcutIndex = findShortcut(event);
+      if (shortcutIndex >= 0) {
+        event.preventDefault();
+        post({ type: 'shortcut', index: shortcutIndex });
+        return false;
+      }
+      // Ctrl+C copies a selection; without one it stays the interrupt (^C). Ctrl+Shift+C always copies.
+      if (isCtrlKey(event, 'c') && (event.shiftKey || term.hasSelection())) {
+        event.preventDefault();
+        copySelection();
+        term.clearSelection();
+        return false;
+      }
+      if (isCtrlKey(event, 'v') || (event.shiftKey && event.key === 'Insert')) {
+        event.preventDefault(); // stops the browser's own paste, which would paste a second time
+        requestPaste(true);
+        return false;
+      }
+      return true;
+    });
+
+    // Linux style: selecting copies, right or middle click pastes.
+    container.addEventListener('mouseup', event => {
+      if (event.button === 0 && term.hasSelection()) copySelection();
+    });
+    container.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      requestPaste(false);
+    });
+    container.addEventListener('mousedown', event => {
+      if (event.button === 1) event.preventDefault(); // no autoscroll on middle click
+    });
+    container.addEventListener('auxclick', event => {
+      if (event.button === 1) requestPaste(false);
+    });
+
+    window.pasteText = text => term.paste(text);
+
+    const status = document.getElementById('status');
+    let statusTimer;
+    window.showStatus = text => {
+      status.textContent = text;
+      status.hidden = false;
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => { status.hidden = true; }, 2500);
+    };
+
+    window.focusTerminal = () => term.focus();
+    post({ type: 'ready', cols: term.cols, rows: term.rows });
+  </script>
+</body>
+</html>

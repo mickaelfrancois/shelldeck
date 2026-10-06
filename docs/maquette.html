@@ -1,0 +1,401 @@
+<title>Maquette Term</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Layout: a desktop app window (tab list sidebar | terminal) framed on a quiet canvas, with a mockup control bar above. */
+  :root {
+    color-scheme: dark;
+    --canvas: #121317;
+    --chrome: #1b1c22;
+    --chrome-raised: #24252d;
+    --chrome-hover: #2a2b34;
+    --chrome-selected: #353643;
+    --line: #2f3039;
+    --fg: #e4e5ea;
+    --fg-muted: #8b8d99;
+    --term-bg: #0c0c0e;
+    --accent: #6ea8fe;
+    --attention: #f0b43c;
+    --ok: #5fc27a;
+    --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  html, body { height: 100%; }
+  body { background: var(--canvas); color: var(--fg); font-family: var(--font-ui); font-size: 13px; }
+  .page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; color: var(--fg-muted); }
+  .controls h1 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
+  .control-btn { font: inherit; color: var(--fg); background: var(--chrome-raised); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  .control-btn:hover { background: var(--chrome-hover); }
+
+  .window { flex: 1; min-height: 440px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--chrome); box-shadow: 0 20px 50px rgb(0 0 0 / .45); }
+  .titlebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 32px; padding-inline: 12px; border-bottom: 1px solid var(--line); color: var(--fg-muted); font-size: 12px; }
+  .titlebar #window-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .titlebar .caption { display: flex; gap: 18px; font-size: 14px; flex: none; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 270px 1fr; }
+
+  /* Sidebar: open tabs first, then the shells that can be opened */
+  .sidebar { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+  .tabs-scroll { flex: 1; min-height: 0; overflow: auto; padding-bottom: 8px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin: 12px 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--fg-muted); }
+  .icon-btn { font: inherit; color: var(--fg-muted); background: transparent; border: 0; border-radius: 4px; width: 22px; height: 22px; cursor: pointer; flex: none; }
+  .icon-btn:hover { background: var(--chrome-hover); color: var(--fg); }
+
+  .tab { position: relative; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; margin: 2px 6px; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+  .tab:hover { background: var(--chrome-hover); }
+  .tab[aria-selected="true"] { background: var(--chrome-selected); }
+  .tab.attention::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--attention); }
+  .tab .text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .tab .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab .subtitle { font-size: 11px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab.attention .subtitle { color: var(--attention); }
+  .tab.exited .title { font-style: italic; color: var(--fg-muted); }
+  .tab .state { display: grid; place-items: center; width: 22px; height: 22px; }
+  .tab .close { display: none; }
+  .tab:hover .close { display: block; }
+  .tab:hover .badge { display: none; }
+  .badge { width: 8px; height: 8px; border-radius: 50%; background: var(--attention); box-shadow: 0 0 0 3px rgb(240 180 60 / .2); }
+  .spinner { font-family: var(--font-mono); color: var(--accent); }
+
+  /* Shell type tile: the one thing that must read at a glance */
+  .shell-tile { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #fff; position: relative; }
+  .shell-tile.small { width: 20px; height: 20px; border-radius: 4px; font-size: 9px; }
+  .shell-tile .claude { position: absolute; right: -4px; bottom: -4px; width: 13px; height: 13px; border-radius: 50%; background: #d97757; border: 2px solid var(--chrome); font-size: 8px; display: grid; place-items: center; }
+
+  /* Launcher: filter field, shell chips, collapsible SSH hosts read from ~/.ssh/config */
+  .launcher { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-bottom: 10px; max-height: 55%; min-height: 0; }
+  .launcher .section-head { margin-bottom: 0; }
+  .filter { margin: 0 10px; font: inherit; color: var(--fg); background: var(--term-bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  .filter::placeholder { color: var(--fg-muted); }
+  .filter:focus { outline: none; border-color: var(--accent); }
+  .shell-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px; }
+  .shell-btn { display: flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px 4px 4px; cursor: pointer; }
+  .shell-btn:hover { background: var(--chrome-hover); }
+  .ssh-head { display: flex; align-items: center; gap: 6px; margin: 0 6px; padding: 4px 6px; border: 0; border-radius: 4px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .06em; cursor: pointer; text-align: left; }
+  .ssh-head:hover { background: var(--chrome-hover); color: var(--fg); }
+  .ssh-head .chevron { transition: transform .15s; }
+  .ssh-head[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+  .ssh-head .source { margin-left: auto; font-weight: 400; letter-spacing: 0; font-family: var(--font-mono); font-size: 10px; }
+  .ssh-list { overflow: auto; min-height: 0; }
+  .ssh-host { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 8px; width: calc(100% - 12px); margin: 0 6px; padding: 5px 6px; border: 0; border-radius: 5px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+  .ssh-host:hover, .ssh-host.first-match { background: var(--chrome-hover); }
+  .ssh-host .text { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+  .ssh-host .target { font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .no-match { margin: 0 12px; color: var(--fg-muted); font-size: 12px; }
+  .body.panel-right { grid-template-columns: 1fr 270px; }
+  .body.panel-right .sidebar { order: 2; border-right: 0; border-left: 1px solid var(--line); }
+  .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .segmented button { font: inherit; color: var(--fg-muted); background: transparent; border: 0; padding: 5px 12px; cursor: pointer; }
+  .segmented button[aria-pressed="true"] { background: var(--chrome-selected); color: var(--fg); }
+  .segmented button + button { border-left: 1px solid var(--line); }
+
+  .terminal-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--term-bg); }
+  .terminal { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; font-family: var(--font-mono); font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .c-prompt { color: var(--ok); }
+  .c-path { color: var(--accent); }
+  .c-muted { color: var(--fg-muted); }
+  .c-claude { color: #d97757; }
+  .c-warn { color: var(--attention); }
+  .cursor { display: inline-block; width: .6em; height: 1.1em; vertical-align: text-bottom; background: var(--fg); animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+
+  .toast { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: grid; grid-template-columns: 28px 1fr; gap: 10px; max-width: 320px; padding: 12px; background: var(--chrome-raised); border: 1px solid var(--line); border-left: 3px solid var(--attention); border-radius: 6px; box-shadow: 0 10px 30px rgb(0 0 0 / .5); cursor: pointer; }
+  .toast strong { display: block; margin-bottom: 2px; }
+  .toast span { color: var(--fg-muted); font-size: 12px; }
+
+  button:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  @media (max-width: 720px) {
+    .body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .sidebar { border-right: 0; border-bottom: 1px solid var(--line); max-height: 260px; }
+  }
+</style>
+
+<div class="page">
+  <div class="controls">
+    <h1>Term · maquette</h1>
+    <span>Panneau</span>
+    <div class="segmented" id="side-control" role="group" aria-label="Côté du panneau">
+      <button type="button" data-side="left" aria-pressed="true">À gauche</button>
+      <button type="button" data-side="right" aria-pressed="false">À droite</button>
+    </div>
+    <button class="control-btn" id="simulate" type="button">Simuler : Claude Code attend une réponse</button>
+  </div>
+
+  <div class="window">
+    <div class="titlebar">
+      <span id="window-title"></span>
+      <span class="caption" aria-hidden="true"><span>–</span><span>□</span><span>✕</span></span>
+    </div>
+    <div class="body" id="body">
+      <aside class="sidebar">
+        <div class="tabs-scroll">
+          <div class="section-head">ONGLETS <button class="icon-btn" id="new-tab" type="button" title="Nouvel onglet">+</button></div>
+          <div id="tabs" role="tablist" aria-orientation="vertical"></div>
+        </div>
+        <div class="launcher">
+          <div class="section-head">NOUVEAU TERMINAL</div>
+          <input class="filter" id="filter" type="search" placeholder="Filtrer (nom, hôte, IP)…" autocomplete="off" aria-label="Filtrer les shells et connexions SSH">
+          <div class="shell-list" id="shells"></div>
+          <button class="ssh-head" id="ssh-toggle" type="button" aria-expanded="false" aria-controls="ssh-list">
+            <span class="chevron">▸</span><span id="ssh-count">SSH</span><span class="source">~/.ssh/config</span>
+          </button>
+          <div class="ssh-list" id="ssh-list" hidden></div>
+        </div>
+      </aside>
+      <section class="terminal-pane">
+        <div class="terminal" id="terminal"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+  const shells = [
+    { id: 'pwsh', name: 'PowerShell 7', glyph: '>_', color: '#2f6fb3' },
+    { id: 'winps', name: 'Windows PowerShell', glyph: 'PS', color: '#1f3c78' },
+    { id: 'cmd', name: 'Invite de commandes', glyph: 'C:', color: '#4a4b55' },
+    { id: 'ubuntu', name: 'Ubuntu-26.04', glyph: 'U', color: '#d9541e' },
+  ];
+  const sshShell = { id: 'ssh', name: 'SSH', glyph: 'ssh', color: '#178a72' };
+  // Example hosts: the app would read the Host entries of ~/.ssh/config.
+  const sshHosts = [
+    ['bastion', 'dev@bastion.example.com'],
+    ['rnd-docker-01', 'deploy@192.0.2.21'],
+    ['rnd-docker-02', 'deploy@192.0.2.22'],
+    ['qa-api-01', 'deploy@192.0.2.31'],
+    ['qa-api-02', 'deploy@192.0.2.32'],
+    ['prod-api-01', 'deploy@198.51.100.11'],
+    ['prod-api-02', 'deploy@198.51.100.12'],
+    ['elk-01', 'admin@192.0.2.40'],
+    ['tfs-agent-01', 'build@192.0.2.51'],
+    ['tfs-agent-02', 'build@192.0.2.52'],
+    ['sql-rnd', 'dev@192.0.2.60'],
+  ].map(([alias, target]) => ({ alias, target }));
+  let sshExpanded = false;
+  let filterText = '';
+  const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+  let nextId = 1;
+  const tab = (shellId, title, cwd, extra = {}) => ({ id: nextId++, shellId, title, cwd, status: 'idle', notification: null, claude: false, ...extra });
+
+  const tabs = [
+    tab('ubuntu', 'Refactor du handler GetDashboard', '~/projects/my-tfs', { claude: true, status: 'working' }),
+    tab('ubuntu', 'Revue PR !4812', '~/projects/auth-api', { claude: true, status: 'attention', notification: 'Claude a besoin de votre autorisation pour Bash' }),
+    tab('pwsh', 'dotnet watch', 'C:\\dev\\my-tfs'),
+    tab('ssh', 'qa-api-01', 'deploy@192.0.2.31'),
+    tab('ubuntu', '~/projects/term', '~/projects/term'),
+    tab('cmd', 'Invite de commandes', 'C:\\Users\\dev'),
+    tab('winps', 'docker compose up', 'C:\\dev\\my-tfs', { status: 'exited' }),
+  ];
+  let selectedId = tabs[3].id;
+  let spinnerIndex = 0;
+
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props = {}, children = []) => {
+    const node = Object.assign(document.createElement(tag), props);
+    children.forEach(child => node.append(child));
+    return node;
+  };
+  const shellOf = (t) => t.shellId === sshShell.id ? sshShell : shells.find(s => s.id === t.shellId);
+  const matchesFilter = (...texts) => texts.some(text => text.toLowerCase().includes(filterText.toLowerCase()));
+  const selectedTab = () => tabs.find(t => t.id === selectedId);
+
+  function shellTile(shell, { small = false, claude = false } = {}) {
+    const tile = el('span', { className: 'shell-tile' + (small ? ' small' : ''), textContent: shell.glyph, title: shell.name, style: `background:${shell.color}` });
+    if (claude) tile.append(el('span', { className: 'claude', textContent: '✳', title: 'Claude Code' }));
+    return tile;
+  }
+
+  function displayTitle(t) {
+    return t.status === 'working' ? `${spinnerFrames[spinnerIndex]} ${t.title}` : t.claude ? `✳ ${t.title}` : t.title;
+  }
+
+  function subtitle(t) {
+    if (t.status === 'attention') return t.notification;
+    if (t.status === 'working') return 'Claude Code travaille…';
+    if (t.status === 'exited') return 'Processus terminé';
+    return t.shellId === sshShell.id ? `SSH · ${t.cwd}` : `${shellOf(t).name} · ${t.cwd}`;
+  }
+
+  function stateIndicator(t) {
+    const holder = el('span', { className: 'state' });
+    if (t.status === 'attention') holder.append(el('span', { className: 'badge', title: 'Notification' }));
+    if (t.status === 'working') holder.append(el('span', { className: 'spinner spin', textContent: spinnerFrames[spinnerIndex] }));
+    const close = el('button', { type: 'button', className: 'icon-btn close', textContent: '✕', title: 'Fermer' });
+    close.addEventListener('click', (e) => { e.stopPropagation(); closeTab(t.id); });
+    holder.append(close);
+    return holder;
+  }
+
+  function renderTabs() {
+    $('tabs').replaceChildren(...tabs.map(t => {
+      const row = el('div', { className: `tab ${t.status}`, tabIndex: 0 }, [
+        shellTile(shellOf(t), { claude: t.claude }),
+        el('span', { className: 'text' }, [
+          el('span', { className: 'title', textContent: displayTitle(t) }),
+          el('span', { className: 'subtitle', textContent: subtitle(t) }),
+        ]),
+        stateIndicator(t),
+      ]);
+      row.setAttribute('role', 'tab');
+      row.setAttribute('aria-selected', t.id === selectedId);
+      row.addEventListener('click', () => selectTab(t.id));
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectTab(t.id); } });
+      return row;
+    }));
+  }
+
+  function renderLauncher() {
+    const visibleShells = shells.filter(sh => matchesFilter(sh.name));
+    const visibleHosts = sshHosts.filter(h => matchesFilter(h.alias, h.target));
+    const expanded = sshExpanded || filterText !== '';
+
+    $('shells').replaceChildren(...visibleShells.map(sh => {
+      const button = el('button', { type: 'button', className: 'shell-btn' }, [shellTile(sh, { small: true }), sh.name]);
+      button.addEventListener('click', () => openTab(sh.id));
+      return button;
+    }));
+
+    $('ssh-count').textContent = filterText ? `SSH · ${visibleHosts.length}/${sshHosts.length}` : `SSH · ${sshHosts.length}`;
+    $('ssh-toggle').setAttribute('aria-expanded', expanded);
+    $('ssh-list').hidden = !expanded;
+    $('ssh-list').replaceChildren(...visibleHosts.map((host, index) => {
+      const firstMatch = filterText !== '' && visibleShells.length === 0 && index === 0;
+      const button = el('button', { type: 'button', className: 'ssh-host' + (firstMatch ? ' first-match' : '') }, [
+        shellTile(sshShell, { small: true }),
+        el('span', { className: 'text' }, [el('span', { textContent: host.alias }), el('span', { className: 'target', textContent: host.target })]),
+      ]);
+      button.addEventListener('click', () => openSsh(host));
+      return button;
+    }));
+    if (expanded && visibleHosts.length === 0) $('ssh-list').append(el('p', { className: 'no-match', textContent: 'Aucune connexion ne correspond.' }));
+  }
+
+  function terminalLines(t) {
+    const shell = shellOf(t);
+    const prompt = t.shellId === 'ubuntu'
+      ? [['c-prompt', `dev@poste:${t.cwd}$ `]]
+      : t.shellId === 'cmd' ? [['c-path', `${t.cwd}>`]] : [['c-path', `PS ${t.cwd}> `]];
+    if (t.shellId === sshShell.id) {
+      return [['c-muted', `ssh ${t.title}\nLast login: Tue Oct  6 09:12:44 2026 from 192.0.2.99\n`], ['c-prompt', `${t.cwd.split('@')[0]}@${t.title}:~$ `], ['cursor', '']];
+    }
+    if (t.claude) {
+      return [
+        ...prompt, ['', 'claude\n\n'],
+        ['c-claude', '✳ Claude Code\n'],
+        ['c-muted', `  ${t.cwd}\n\n`],
+        ['', `> ${t.title}\n\n`],
+        t.status === 'attention'
+          ? ['c-warn', '  Autoriser Bash(dotnet test tests/MyTfs.Application.Tests) ?\n  ❯ 1. Oui\n    2. Oui, et ne plus demander\n    3. Non\n']
+          : ['c-muted', `  Lecture de src/MyTfs.Application/Dashboard/GetDashboardQuery.cs…\n`],
+      ];
+    }
+    if (t.status === 'exited') return [...prompt, ['', `${t.title}\n`], ['c-muted', 'Container my-tfs-api  Stopped\n\n[processus terminé]']];
+    return [['c-muted', `${shell.name}\n\n`], ...prompt, ['cursor', '']];
+  }
+
+  function renderTerminal() {
+    const t = selectedTab();
+    if (!t) {
+      $('terminal').replaceChildren(el('span', { className: 'c-muted', textContent: 'Aucun onglet ouvert. Choisissez un shell en bas du panneau.' }));
+      $('window-title').textContent = 'Term';
+      return;
+    }
+    const lines = terminalLines(t).map(([cls, text]) => el('span', { className: cls, textContent: text }));
+    if (t.status === 'working') lines.push(el('span', { className: 'c-muted spin', textContent: spinnerFrames[spinnerIndex] }));
+    $('terminal').replaceChildren(...lines);
+    $('window-title').textContent = `${displayTitle(t)} — Term`;
+  }
+
+  function render() {
+    renderTabs();
+    renderTerminal();
+  }
+
+  function selectTab(id) {
+    selectedId = id;
+    const t = selectedTab();
+    if (t.status === 'attention') { t.status = 'idle'; t.notification = null; }
+    $('toast').hidden = true;
+    render();
+  }
+
+  function openTab(shellId) {
+    const shell = shells.find(s => s.id === shellId);
+    const created = tab(shellId, shell.name, shellId === 'ubuntu' ? '~' : 'C:\\Users\\dev');
+    tabs.push(created);
+    clearFilter();
+    selectTab(created.id);
+  }
+
+  function openSsh(host) {
+    const created = tab(sshShell.id, host.alias, host.target);
+    tabs.push(created);
+    clearFilter();
+    selectTab(created.id);
+  }
+
+  function clearFilter() {
+    filterText = '';
+    $('filter').value = '';
+    renderLauncher();
+  }
+
+  function closeTab(id) {
+    const index = tabs.findIndex(t => t.id === id);
+    tabs.splice(index, 1);
+    if (selectedId === id) selectedId = tabs[Math.min(index, tabs.length - 1)]?.id ?? null;
+    render();
+  }
+
+  function notify(t, message) {
+    t.status = 'attention';
+    t.notification = message;
+    if (t.id !== selectedId) {
+      const toast = $('toast');
+      toast.replaceChildren(shellTile(shellOf(t), { claude: true }), el('div', {}, [el('strong', { textContent: t.title }), el('span', { textContent: message })]));
+      toast.onclick = () => selectTab(t.id);
+      toast.hidden = false;
+    }
+    render();
+  }
+
+  $('new-tab').addEventListener('click', () => $('filter').focus());
+  $('ssh-toggle').addEventListener('click', () => { sshExpanded = !sshExpanded; renderLauncher(); });
+  $('filter').addEventListener('input', (e) => { filterText = e.target.value.trim(); renderLauncher(); });
+  $('filter').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { clearFilter(); return; }
+    if (e.key !== 'Enter' || !filterText) return;
+    const shell = shells.find(sh => matchesFilter(sh.name));
+    const host = sshHosts.find(h => matchesFilter(h.alias, h.target));
+    if (shell) openTab(shell.id); else if (host) openSsh(host);
+  });
+  $('side-control').addEventListener('click', (e) => {
+    const side = e.target.dataset?.side;
+    if (!side) return;
+    $('body').classList.toggle('panel-right', side === 'right');
+    document.querySelectorAll('#side-control button').forEach(b => b.setAttribute('aria-pressed', b.dataset.side === side));
+  });
+
+  $('simulate').addEventListener('click', () => {
+    const working = tabs.find(t => t.claude && t.status === 'working') ?? tabs.find(t => t.claude && t.id !== selectedId);
+    if (working) notify(working, 'Claude attend votre réponse');
+  });
+
+  // Only the spinner glyphs change on each frame, so hover and clicks on the list are not disturbed.
+  setInterval(() => {
+    spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
+    document.querySelectorAll('.spin').forEach(node => { node.textContent = spinnerFrames[spinnerIndex]; });
+    document.querySelectorAll('.tab.working .title').forEach(node => { node.textContent = node.textContent.replace(/^\S+/, spinnerFrames[spinnerIndex]); });
+    const t = selectedTab();
+    if (t?.status === 'working') $('window-title').textContent = `${displayTitle(t)} — Term`;
+  }, 120);
+
+  renderLauncher();
+  render();
+</script>
