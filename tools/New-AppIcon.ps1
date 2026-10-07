@@ -1,11 +1,15 @@
 ﻿<#
 .SYNOPSIS
-    Renders src/Pupitre/Assets/pupitre.ico from the drawing of pupitre.svg (64-unit grid).
+    Renders src/ShellDeck/Assets/shelldeck.ico, and the logos of the MSIX package (packaging/Assets),
+    from the drawing of shelldeck.svg (64-unit grid).
 .DESCRIPTION
-    Windows PowerShell only (System.Drawing). Keep the shapes below in sync with pupitre.svg.
+    Windows PowerShell only (System.Drawing). Keep the shapes below in sync with shelldeck.svg.
     Each size is drawn natively rather than downscaled, so small sizes stay sharp.
 #>
-param([string]$OutputPath = (Join-Path $PSScriptRoot '..\src\Pupitre\Assets\pupitre.ico'))
+param(
+    [string]$OutputPath = (Join-Path $PSScriptRoot '..\src\ShellDeck\Assets\shelldeck.ico'),
+    [string]$PackageAssetsDirectory = (Join-Path $PSScriptRoot '..\packaging\Assets')
+)
 
 Add-Type -AssemblyName System.Drawing
 $sizes = 16, 20, 24, 32, 40, 48, 64, 128, 256
@@ -68,5 +72,13 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
 }
 foreach ($frame in $frames) { $writer.Write($frame) }
 $writer.Flush()
-[System.IO.File]::WriteAllBytes((Resolve-Path -LiteralPath (Split-Path $OutputPath)).Path + '\' + (Split-Path $OutputPath -Leaf), $output.ToArray())
+[System.IO.File]::WriteAllBytes((Resolve-Path -LiteralPath (Split-Path $OutputPath)).ProviderPath + '\' + (Split-Path $OutputPath -Leaf), $output.ToArray())
 Write-Output "Icon written: $OutputPath ($($sizes -join ', ') px)"
+
+# Logos required by the MSIX manifest (packaging/AppxManifest.xml), named as it references them.
+$packageLogos = [ordered]@{ 'StoreLogo.png' = 50; 'Square44x44Logo.png' = 44; 'Square150x150Logo.png' = 150 }
+New-Item -ItemType Directory -Force -Path $PackageAssetsDirectory | Out-Null
+foreach ($logo in $packageLogos.GetEnumerator()) {
+    [System.IO.File]::WriteAllBytes((Join-Path (Resolve-Path -LiteralPath $PackageAssetsDirectory).ProviderPath $logo.Key), (New-IconFrame $logo.Value))
+}
+Write-Output "Package logos written: $PackageAssetsDirectory ($($packageLogos.Keys -join ', '))"

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Pupitre bundles xterm.js and its addons (`src/Pupitre/wwwroot`), distributed under the MIT license:
+ShellDeck bundles xterm.js and its addons (`src/ShellDeck/wwwroot`), distributed under the MIT license:
 
 ```
 Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)

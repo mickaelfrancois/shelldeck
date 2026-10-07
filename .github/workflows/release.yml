@@ -23,22 +23,39 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Test
-        run: dotnet test --solution Pupitre.slnx --configuration Release
+        run: dotnet test --solution ShellDeck.slnx --configuration Release
 
       - name: Publish
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           foreach ($runtime in 'win-x64', 'win-arm64') {
               $output = "publish/$runtime"
-              dotnet publish src/Pupitre/Pupitre.csproj --configuration Release --runtime $runtime --self-contained true `
+              dotnet publish src/ShellDeck/ShellDeck.csproj --configuration Release --runtime $runtime --self-contained true `
                   -p:Version=$version -p:DebugType=none --output $output
               if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
               Copy-Item THIRD_PARTY_NOTICES.md $output
-              Compress-Archive -Path "$output/*" -DestinationPath "Pupitre-$version-$runtime.zip"
+              Compress-Archive -Path "$output/*" -DestinationPath "ShellDeck-$version-$runtime.zip"
+          }
+
+      # Packages for the Microsoft Store, once the Store identity is set as repository variables
+      # (Settings › Secrets and variables › Actions › Variables); the Store signs them on submission.
+      - name: Package for the Microsoft Store
+        if: vars.MSIX_IDENTITY_NAME != ''
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+          MSIX_DISPLAY_NAME: ${{ vars.MSIX_DISPLAY_NAME }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          foreach ($architecture in 'x64', 'arm64') {
+              ./tools/New-MsixPackage.ps1 -PublishDirectory "publish/win-$architecture" -Version $version -Architecture $architecture `
+                  -IdentityName $env:MSIX_IDENTITY_NAME -Publisher $env:MSIX_PUBLISHER -PublisherDisplayName $env:MSIX_PUBLISHER_DISPLAY_NAME `
+                  -DisplayName $env:MSIX_DISPLAY_NAME
           }
 
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:GITHUB_REF_NAME (Get-ChildItem Pupitre-*.zip) --title "Pupitre $($env:GITHUB_REF_NAME)" --generate-notes
+          gh release create $env:GITHUB_REF_NAME (Get-ChildItem ShellDeck-*.zip, ShellDeck-*.msix) --title "ShellDeck $($env:GITHUB_REF_NAME)" --generate-notes
