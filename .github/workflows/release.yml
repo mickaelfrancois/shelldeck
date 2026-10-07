@@ -1,0 +1,44 @@
+# Pushing a tag such as v0.2.0 tests, publishes and attaches a ready-to-run zip per architecture to a GitHub release.
+# The zips embed the .NET runtime: users only need Windows 10/11 and WebView2 (built into Windows 11).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test --solution Pupitre.slnx --configuration Release
+
+      - name: Publish
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          foreach ($runtime in 'win-x64', 'win-arm64') {
+              $output = "publish/$runtime"
+              dotnet publish src/Pupitre/Pupitre.csproj --configuration Release --runtime $runtime --self-contained true `
+                  -p:Version=$version -p:DebugType=none --output $output
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              Copy-Item THIRD_PARTY_NOTICES.md $output
+              Compress-Archive -Path "$output/*" -DestinationPath "Pupitre-$version-$runtime.zip"
+          }
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME (Get-ChildItem Pupitre-*.zip) --title "Pupitre $($env:GITHUB_REF_NAME)" --generate-notes

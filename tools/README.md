@@ -43,3 +43,14 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 Adaptez le nom de la distribution (`wsl -l` les liste) et le chemin du dépôt (`wslpath -w .` dans WSL l'affiche).
+
+## Publier une version
+
+Le workflow `.github/workflows/release.yml` se déclenche sur un tag `v*`. Il lance les tests, publie Pupitre en Release avec le runtime .NET inclus (win-x64 et win-arm64), puis crée une release GitHub avec un zip par architecture et des notes générées à partir des commits.
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Le numéro du tag devient la version de l'exécutable. Côté utilisateur, il suffit de décompresser le zip et de lancer `Pupitre.exe` : ni SDK ni runtime .NET à installer, seulement WebView2, déjà présent sur Windows 11. L'exécutable n'est pas signé : à la première exécution, SmartScreen affiche « Windows a protégé votre ordinateur », puis « Informations complémentaires » › « Exécuter quand même ».
