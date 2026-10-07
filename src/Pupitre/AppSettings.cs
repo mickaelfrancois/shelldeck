@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Pupitre.Shells;
 
 namespace Pupitre;
 
@@ -11,13 +12,19 @@ public enum PanelSide
 }
 
 /// <summary>User preferences, stored as JSON under %LOCALAPPDATA%\Pupitre.</summary>
-/// <param name="DefaultProfileName">Shell or SSH connection opened at startup; null means the first shell found.</param>
+/// <param name="DefaultProfileName">Written by earlier versions: the name of the terminal opened at startup. Read until <see cref="DefaultProfileId"/> replaces it.</param>
 /// <param name="Window">Last size and position of the main window; null until the window has been closed once.</param>
 public sealed record AppSettings(
     PanelSide PanelSide = PanelSide.Left,
-    string? DefaultProfileName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DefaultProfileName = null,
     WindowPlacement? Window = null)
 {
+    /// <summary>Terminal opened at startup, by <see cref="ShellProfile.Id"/>; null means the first shell found.</summary>
+    public string? DefaultProfileId { get; init; }
+
+    /// <summary>Terminals added, hidden, reordered or given a starting directory in the launcher.</summary>
+    public ProfileSettings Profiles { get; init; } = new();
+
     public static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), App.ProductName, "settings.json");
 
@@ -52,8 +59,11 @@ public sealed record AppSettings(
         }
     }
 
-    public static AppSettings Parse(string json) =>
-        JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions) ?? new AppSettings();
+    public static AppSettings Parse(string json)
+    {
+        var settings = JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions) ?? new AppSettings();
+        return settings with { Profiles = ProfileSettings.Repair(settings.Profiles) };
+    }
 
     public string ToJson() => JsonSerializer.Serialize(this, SerializerOptions);
 

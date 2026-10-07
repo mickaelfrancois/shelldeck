@@ -82,7 +82,76 @@ public sealed class MainViewModelTests
 
         viewModel.SetDefaultProfile(Ubuntu);
 
-        Assert.Equal("Ubuntu-26.04", saved?.DefaultProfileName);
+        Assert.Equal(("wsl:Ubuntu-26.04", null), (saved?.DefaultProfileId, saved?.DefaultProfileName));
+    }
+
+    [Fact]
+    public void A_hidden_default_falls_back_to_the_first_visible_shell()
+    {
+        var viewModel = CreateViewModel(new AppSettings
+        {
+            DefaultProfileId = PowerShell.Id,
+            Profiles = new ProfileSettings { Hidden = [PowerShell.Id] },
+        });
+
+        Assert.Equal(Ubuntu, viewModel.DefaultProfile);
+    }
+
+    [Fact]
+    public void Hiding_a_terminal_moves_it_out_of_the_launcher_and_is_saved()
+    {
+        AppSettings? saved = null;
+        var viewModel = CreateViewModel(new AppSettings(), settings => saved = settings);
+
+        viewModel.HideProfile(Docker01);
+
+        Assert.Equal((0, Docker01), (viewModel.SshConnectionCount, viewModel.HiddenProfiles.Single()));
+        Assert.Equal([Docker01.Id], saved?.Profiles.Hidden);
+    }
+
+    [Fact]
+    public void Moving_a_shell_after_its_neighbor_reorders_the_launcher()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+
+        viewModel.MoveProfile(PowerShell, 1);
+
+        Assert.Equal([Ubuntu, PowerShell], viewModel.Shells.Cast<ShellProfile>());
+    }
+
+    [Fact]
+    public void An_added_terminal_joins_the_shells_and_can_be_deleted()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+        var build = new CustomProfile("b1", "Build", "pwsh.exe -File build.ps1", @"C:\src");
+
+        viewModel.SaveCustomProfile(build);
+        var afterAdd = viewModel.Shells.Cast<ShellProfile>().Last();
+        viewModel.DeleteProfile(afterAdd);
+
+        Assert.Equal(("b1", 2), (afterAdd.Id, viewModel.Shells.Cast<ShellProfile>().Count()));
+    }
+
+    [Fact]
+    public void A_discovered_terminal_cannot_be_deleted()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+
+        viewModel.DeleteProfile(Ubuntu);
+
+        Assert.Contains(Ubuntu, viewModel.Shells.Cast<ShellProfile>());
+    }
+
+    [Fact]
+    public void Giving_back_the_discovered_directory_forgets_the_choice()
+    {
+        AppSettings? saved = null;
+        var viewModel = CreateViewModel(new AppSettings(), settings => saved = settings);
+
+        viewModel.SetStartingDirectory(Ubuntu, "~/projets");
+        viewModel.SetStartingDirectory(Ubuntu, "~");
+
+        Assert.Empty(saved!.Profiles.StartingDirectories);
     }
 
     private static MainViewModel CreateViewModelWithTabs(int count)
@@ -209,5 +278,15 @@ public sealed class MainViewModelTests
 
         Assert.Equal((PanelSide.Right, Ubuntu, 0), (viewModel.PanelSide, viewModel.DefaultProfile, saves));
         Assert.Contains(nameof(MainViewModel.PanelSide), changed);
+    }
+
+    [Fact]
+    public void Terminals_hidden_by_hand_in_the_file_leave_the_launcher()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+
+        viewModel.ReloadSettings(new AppSettings { Profiles = new ProfileSettings { Hidden = [Ubuntu.Id] } });
+
+        Assert.Equal([PowerShell], viewModel.Shells.Cast<ShellProfile>());
     }
 }

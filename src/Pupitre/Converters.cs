@@ -10,6 +10,8 @@ public static class Converters
 
     public static IValueConverter TrueToVisible { get; } = new VisibilityConverter(value => value is true);
 
+    public static IValueConverter FalseToVisible { get; } = new VisibilityConverter(value => value is false);
+
     public static IValueConverter PositiveToVisible { get; } = new VisibilityConverter(value => value is > 0);
 
     public static IValueConverter ZeroToVisible { get; } = new VisibilityConverter(value => value is 0);

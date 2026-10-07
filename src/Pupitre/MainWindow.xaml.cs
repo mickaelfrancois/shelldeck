@@ -1,11 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Threading;
 using Pupitre.Shells;
 using Pupitre.Terminal;
@@ -15,7 +13,6 @@ namespace Pupitre;
 
 public partial class MainWindow : Window
 {
-    private const int DwmUseImmersiveDarkMode = 20;
     private const double ToastMargin = 12;
     private static readonly TimeSpan ToastDuration = TimeSpan.FromSeconds(8);
 
@@ -59,7 +56,7 @@ public partial class MainWindow : Window
         // The toast is a separate window: it would not follow the main window, and would stay above other apps.
         LocationChanged += (_, _) => HideToast();
         Deactivated += (_, _) => HideToast();
-        SourceInitialized += (_, _) => UseDarkTitleBar();
+        SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
 
         _settingsReloadTimer.Tick += (_, _) =>
         {
@@ -95,6 +92,53 @@ public partial class MainWindow : Window
 
     private void OnSetDefaultProfileClicked(object sender, RoutedEventArgs e) =>
         _viewModel.SetDefaultProfile(DataContextOf<ShellProfile>(sender));
+
+    private void OnMoveProfileUpClicked(object sender, RoutedEventArgs e) =>
+        _viewModel.MoveProfile(DataContextOf<ShellProfile>(sender), -1);
+
+    private void OnMoveProfileDownClicked(object sender, RoutedEventArgs e) =>
+        _viewModel.MoveProfile(DataContextOf<ShellProfile>(sender), 1);
+
+    private void OnHideProfileClicked(object sender, RoutedEventArgs e) =>
+        _viewModel.HideProfile(DataContextOf<ShellProfile>(sender));
+
+    private void OnShowProfileClicked(object sender, RoutedEventArgs e) =>
+        _viewModel.ShowProfile(DataContextOf<ShellProfile>(sender));
+
+    private void OnAddProfileClicked(object sender, RoutedEventArgs e) => EditProfile(null);
+
+    private void OnEditProfileClicked(object sender, RoutedEventArgs e) => EditProfile(DataContextOf<ShellProfile>(sender));
+
+    /// <summary>Adds a terminal (<paramref name="profile"/> null), or edits one; tabs already open keep their settings.</summary>
+    private void EditProfile(ShellProfile? profile)
+    {
+        var dialog = new ProfileDialog(profile) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        if (profile is { IsCustom: false })
+        {
+            _viewModel.SetStartingDirectory(profile, dialog.StartingDirectory);
+            return;
+        }
+
+        _viewModel.SaveCustomProfile(new CustomProfile(
+            profile?.Id ?? Guid.NewGuid().ToString(), dialog.ProfileName, dialog.ProfileCommandLine, dialog.StartingDirectory));
+    }
+
+    private void OnDeleteProfileClicked(object sender, RoutedEventArgs e)
+    {
+        var profile = DataContextOf<ShellProfile>(sender);
+        if (Confirm($"Supprimer le terminal « {profile.Name} » ?\n\nLes onglets déjà ouverts restent ouverts."))
+        {
+            _viewModel.DeleteProfile(profile);
+        }
+    }
+
+    /// <summary>SSH connections come from the user's OpenSSH config: they are edited there, never rewritten by the app.</summary>
+    private void OnEditSshConfigClicked(object sender, RoutedEventArgs e) => OpenInEditor(SshConfig.UserConfigPath);
 
     private void OnCloseTabClicked(object sender, RoutedEventArgs e) =>
         CloseTab(DataContextOf<TerminalTab>(sender));
@@ -263,7 +307,7 @@ public partial class MainWindow : Window
     private void OnTogglePanelSideClicked(object sender, RoutedEventArgs e) =>
         _viewModel.TogglePanelSide();
 
-    /// <summary>Opens settings.json in the editor associated with .json files, Notepad when there is none.</summary>
+    /// <summary>Opens settings.json, creating it first so the editor has something to show.</summary>
     private void OnSettingsClicked(object sender, RoutedEventArgs e)
     {
         if (!File.Exists(AppSettings.FilePath))
@@ -271,13 +315,19 @@ public partial class MainWindow : Window
             _viewModel.SaveCurrentSettings();
         }
 
+        OpenInEditor(AppSettings.FilePath);
+    }
+
+    /// <summary>The editor associated with the file type, Notepad when there is none (~/.ssh/config has no extension).</summary>
+    private static void OpenInEditor(string path)
+    {
         try
         {
-            Process.Start(new ProcessStartInfo(AppSettings.FilePath) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
         catch (Win32Exception)
         {
-            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{AppSettings.FilePath}\"") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true });
         }
     }
 
@@ -325,14 +375,5 @@ public partial class MainWindow : Window
         new(new Point(targetSize.Width - popupSize.Width - ToastMargin, targetSize.Height - popupSize.Height - ToastMargin), PopupPrimaryAxis.None),
     ];
 
-    private void UseDarkTitleBar()
-    {
-        var enabled = 1;
-        DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, DwmUseImmersiveDarkMode, ref enabled, sizeof(int));
-    }
-
     private static T DataContextOf<T>(object sender) => (T)((FrameworkElement)sender).DataContext;
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int valueSize);
 }

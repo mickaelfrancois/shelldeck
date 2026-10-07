@@ -9,14 +9,19 @@ public sealed class MainViewModel : ObservableObject
 {
     private const int LastTabNumber = 9;
 
+    private readonly IReadOnlyList<ShellProfile> _discoveredShells;
+    private readonly IReadOnlyList<ShellProfile> _discoveredSshConnections;
+    private readonly ObservableCollection<ShellProfile> _shellItems = [];
+    private readonly ObservableCollection<ShellProfile> _sshItems = [];
     private readonly ListCollectionView _shells;
     private readonly ListCollectionView _sshConnections;
-    private readonly IReadOnlyList<ShellProfile> _allProfiles;
     private readonly Action<AppSettings> _saveSettings;
     private AppSettings _settings;
+    private LauncherProfiles _launcher = new([], [], []);
     private TerminalTab? _selectedTab;
     private string _filterText = string.Empty;
     private bool _isSshExpanded;
+    private bool _isHiddenExpanded;
 
     public MainViewModel(
         IReadOnlyList<ShellProfile> shells,
@@ -26,10 +31,11 @@ public sealed class MainViewModel : ObservableObject
     {
         _settings = settings;
         _saveSettings = saveSettings;
-        _allProfiles = [.. shells, .. sshConnections];
-        _shells = new ListCollectionView(shells.ToList()) { Filter = MatchesFilter };
-        _sshConnections = new ListCollectionView(sshConnections.ToList()) { Filter = MatchesFilter };
-        SshConnectionCount = sshConnections.Count;
+        _discoveredShells = shells;
+        _discoveredSshConnections = sshConnections;
+        _shells = new ListCollectionView(_shellItems) { Filter = MatchesFilter };
+        _sshConnections = new ListCollectionView(_sshItems) { Filter = MatchesFilter };
+        ArrangeProfiles();
     }
 
     /// <summary>Raised when a tab the user is not looking at needs them.</summary>
@@ -41,7 +47,28 @@ public sealed class MainViewModel : ObservableObject
 
     public ICollectionView SshConnections => _sshConnections;
 
-    public int SshConnectionCount { get; }
+    public int SshConnectionCount => _launcher.SshConnections.Count;
+
+    /// <summary>Not filtered: hidden terminals are out of the way until the user looks for them here.</summary>
+    public ObservableCollection<ShellProfile> HiddenProfiles { get; } = [];
+
+    public string HiddenHeader => $"Masqués · {HiddenProfiles.Count}";
+
+    public bool IsHiddenExpanded
+    {
+        get => _isHiddenExpanded;
+        set
+        {
+            if (SetField(ref _isHiddenExpanded, value))
+            {
+                OnPropertyChanged(nameof(IsHiddenListVisible));
+            }
+        }
+    }
+
+    public bool IsHiddenSectionVisible => HiddenProfiles.Count > 0 && !IsFiltering;
+
+    public bool IsHiddenListVisible => IsHiddenSectionVisible && IsHiddenExpanded;
 
     public string SshHeader => IsFiltering
         ? $"SSH · {_sshConnections.Count}/{SshConnectionCount}"
@@ -79,6 +106,8 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(SshHeader));
             OnPropertyChanged(nameof(IsSshListVisible));
             OnPropertyChanged(nameof(HasNoSshMatch));
+            OnPropertyChanged(nameof(IsHiddenSectionVisible));
+            OnPropertyChanged(nameof(IsHiddenListVisible));
         }
     }
 
@@ -113,12 +142,12 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>Opened at startup: the chosen profile while it still exists, else the first shell found.</summary>
+    /// <summary>Opened at startup: the chosen profile while it exists and is shown, else the first shell of the launcher.</summary>
     public ShellProfile? DefaultProfile =>
-        _allProfiles.FirstOrDefault(profile => profile.Name == _settings.DefaultProfileName)
-        ?? _allProfiles.FirstOrDefault(profile => profile.Kind is not ShellKind.Ssh);
+        _launcher.Visible.FirstOrDefault(profile => IsChosenDefault(profile))
+        ?? _launcher.Visible.FirstOrDefault(profile => profile.Kind is not ShellKind.Ssh);
 
-    public string? DefaultProfileName => DefaultProfile?.Name;
+    public string? DefaultProfileId => DefaultProfile?.Id;
 
     private bool IsFiltering => FilterText.Trim().Length > 0;
 
@@ -129,9 +158,36 @@ public sealed class MainViewModel : ObservableObject
 
     public void SetDefaultProfile(ShellProfile profile)
     {
-        UpdateSettings(_settings with { DefaultProfileName = profile.Name });
+        UpdateSettings(_settings with { DefaultProfileId = profile.Id, DefaultProfileName = null });
         OnPropertyChanged(nameof(DefaultProfile));
-        OnPropertyChanged(nameof(DefaultProfileName));
+        OnPropertyChanged(nameof(DefaultProfileId));
+    }
+
+    public void HideProfile(ShellProfile profile) => UpdateProfiles(_settings.Profiles.Hide(profile.Id));
+
+    public void ShowProfile(ShellProfile profile) => UpdateProfiles(_settings.Profiles.Show(profile.Id));
+
+    /// <summary>Moves the terminal before (-1) or after (1) its neighbor in its section of the launcher.</summary>
+    public void MoveProfile(ShellProfile profile, int offset) =>
+        UpdateProfiles(ProfileCatalog.Move(_discoveredShells, _discoveredSshConnections, _settings.Profiles, profile.Id, offset));
+
+    /// <summary>For a discovered terminal: its own starting directory, the one discovery gives meaning "no choice".</summary>
+    public void SetStartingDirectory(ShellProfile profile, string directory)
+    {
+        var discovered = _discoveredShells.FirstOrDefault(shell => shell.Id == profile.Id);
+        var chosen = discovered is not null && directory.Trim() == discovered.Location ? string.Empty : directory;
+        UpdateProfiles(_settings.Profiles.WithStartingDirectory(profile.Id, chosen));
+    }
+
+    public void SaveCustomProfile(CustomProfile profile) => UpdateProfiles(_settings.Profiles.SaveCustom(profile));
+
+    /// <summary>Only a terminal the user added can be deleted: a discovered one would come back, it is hidden instead.</summary>
+    public void DeleteProfile(ShellProfile profile)
+    {
+        if (profile.IsCustom)
+        {
+            UpdateProfiles(_settings.Profiles.Remove(profile.Id));
+        }
     }
 
     public void Open(ShellProfile profile)
@@ -244,8 +300,13 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(PanelSide));
         }
 
+        if (settings.Profiles != previous.Profiles)
+        {
+            ArrangeProfiles();
+        }
+
         OnPropertyChanged(nameof(DefaultProfile));
-        OnPropertyChanged(nameof(DefaultProfileName));
+        OnPropertyChanged(nameof(DefaultProfileId));
     }
 
     private void UpdateSettings(AppSettings settings)
@@ -253,6 +314,48 @@ public sealed class MainViewModel : ObservableObject
         _settings = settings;
         _saveSettings(settings);
     }
+
+    private void UpdateProfiles(ProfileSettings profiles)
+    {
+        if (profiles == _settings.Profiles)
+        {
+            return;
+        }
+
+        UpdateSettings(_settings with { Profiles = profiles });
+        ArrangeProfiles();
+        OnPropertyChanged(nameof(DefaultProfile));
+        OnPropertyChanged(nameof(DefaultProfileId));
+    }
+
+    /// <summary>Rebuilds the launcher lists; open tabs keep the profile they started with.</summary>
+    private void ArrangeProfiles()
+    {
+        _launcher = ProfileCatalog.Arrange(_discoveredShells, _discoveredSshConnections, _settings.Profiles);
+        Fill(_shellItems, _launcher.Shells);
+        Fill(_sshItems, _launcher.SshConnections);
+        Fill(HiddenProfiles, _launcher.Hidden);
+
+        OnPropertyChanged(nameof(SshConnectionCount));
+        OnPropertyChanged(nameof(SshHeader));
+        OnPropertyChanged(nameof(HasNoSshMatch));
+        OnPropertyChanged(nameof(HiddenHeader));
+        OnPropertyChanged(nameof(IsHiddenSectionVisible));
+        OnPropertyChanged(nameof(IsHiddenListVisible));
+    }
+
+    private static void Fill(ObservableCollection<ShellProfile> items, IReadOnlyList<ShellProfile> profiles)
+    {
+        items.Clear();
+        foreach (var profile in profiles)
+        {
+            items.Add(profile);
+        }
+    }
+
+    /// <summary>By id; by name for a file written before ids existed.</summary>
+    private bool IsChosenDefault(ShellProfile profile) =>
+        _settings.DefaultProfileId is { } id ? profile.Id == id : profile.Name == _settings.DefaultProfileName;
 
     private bool MatchesFilter(object item)
     {

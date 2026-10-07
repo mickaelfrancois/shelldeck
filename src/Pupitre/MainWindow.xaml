@@ -10,8 +10,24 @@
         Background="{StaticResource ChromeBrush}" Foreground="{StaticResource ForegroundBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="13">
     <Window.Resources>
+        <!-- Shared by every terminal of the launcher: its DataContext is the ShellProfile it was opened on. -->
         <ContextMenu x:Key="ProfileContextMenu">
             <MenuItem Header="Ouvrir au démarrage" Click="OnSetDefaultProfileClicked" />
+            <MenuItem Header="Monter" Click="OnMoveProfileUpClicked" />
+            <MenuItem Header="Descendre" Click="OnMoveProfileDownClicked" />
+            <MenuItem Header="Modifier…" Click="OnEditProfileClicked"
+                      Visibility="{Binding HasStartingDirectory, Converter={x:Static pupitre:Converters.TrueToVisible}}" />
+            <MenuItem Header="Modifier ~/.ssh/config" Click="OnEditSshConfigClicked"
+                      Visibility="{Binding HasStartingDirectory, Converter={x:Static pupitre:Converters.FalseToVisible}}" />
+            <MenuItem Header="Masquer" Click="OnHideProfileClicked" />
+            <MenuItem Header="Supprimer…" Click="OnDeleteProfileClicked"
+                      Visibility="{Binding IsCustom, Converter={x:Static pupitre:Converters.TrueToVisible}}" />
+        </ContextMenu>
+
+        <ContextMenu x:Key="HiddenProfileContextMenu">
+            <MenuItem Header="Afficher" Click="OnShowProfileClicked" />
+            <MenuItem Header="Supprimer…" Click="OnDeleteProfileClicked"
+                      Visibility="{Binding IsCustom, Converter={x:Static pupitre:Converters.TrueToVisible}}" />
         </ContextMenu>
 
         <!-- Star shown next to the profile opened at startup. -->
@@ -25,8 +41,8 @@
             <Setter Property="Visibility">
                 <Setter.Value>
                     <MultiBinding Converter="{x:Static pupitre:Converters.EqualToVisible}">
-                        <Binding Path="Name" />
-                        <Binding Path="DataContext.DefaultProfileName" RelativeSource="{RelativeSource AncestorType=Window}" />
+                        <Binding Path="Id" />
+                        <Binding Path="DataContext.DefaultProfileId" RelativeSource="{RelativeSource AncestorType=Window}" />
                     </MultiBinding>
                 </Setter.Value>
             </Setter>
@@ -138,28 +154,27 @@
 
                 <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,10">
                     <StackPanel>
-                        <TextBlock Text="NOUVEAU TERMINAL" Style="{StaticResource SectionHeaderStyle}" Margin="12,0,12,8" />
+                        <DockPanel Margin="12,0,8,8">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButtonStyle}" Content="+" FontSize="15"
+                                    ToolTip="Ajouter un terminal…" AutomationProperties.Name="Ajouter un terminal" Click="OnAddProfileClicked" />
+                            <TextBlock Text="NOUVEAU TERMINAL" Style="{StaticResource SectionHeaderStyle}" />
+                        </DockPanel>
                         <TextBox x:Name="FilterBox" Style="{StaticResource FilterBoxStyle}" Margin="10,0,10,8"
                                  Tag="Filtrer (nom, hôte, IP)…"
                                  Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
                                  PreviewKeyDown="OnFilterKeyDown" />
 
-                        <ItemsControl ItemsSource="{Binding Shells}" Margin="10,0,4,4">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
+                        <ItemsControl ItemsSource="{Binding Shells}" Margin="0,0,0,6">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Style="{StaticResource ShellChipStyle}" Margin="0,0,6,6" Click="OnProfileClicked"
+                                    <Button Style="{StaticResource RowButtonStyle}" Margin="6,0" Click="OnProfileClicked"
                                             ContextMenu="{StaticResource ProfileContextMenu}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ShellTileTemplate}"
-                                                            Width="20" Height="20" FontSize="9" Margin="0,0,6,0" Focusable="False" />
-                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                                            <TextBlock Style="{StaticResource DefaultProfileMarkStyle}" />
-                                        </StackPanel>
+                                        <DockPanel>
+                                            <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource ShellTileTemplate}"
+                                                            Width="20" Height="20" FontSize="9" Margin="0,0,8,0" Focusable="False" />
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Style="{StaticResource DefaultProfileMarkStyle}" HorizontalAlignment="Left" />
+                                        </DockPanel>
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -172,26 +187,7 @@
                             </ToggleButton.Visibility>
                             <DockPanel>
                                 <TextBlock DockPanel.Dock="Right" Text="~/.ssh/config" FontFamily="{StaticResource MonoFont}" FontSize="10" VerticalAlignment="Center" />
-                                <TextBlock x:Name="Chevron" Text="▸" Margin="0,0,6,0" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="RenderTransform">
-                                                <Setter.Value>
-                                                    <RotateTransform Angle="0" />
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsSshListVisible}" Value="True">
-                                                    <Setter Property="RenderTransform">
-                                                        <Setter.Value>
-                                                            <RotateTransform Angle="90" />
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <TextBlock Style="{StaticResource ChevronStyle}" Tag="{Binding IsSshListVisible}" />
                                 <TextBlock Text="{Binding SshHeader}" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </DockPanel>
                         </ToggleButton>
@@ -221,6 +217,35 @@
                                 <TextBlock Text="Aucune connexion ne correspond." Foreground="{StaticResource MutedForegroundBrush}" FontSize="12" Margin="12,2"
                                            Visibility="{Binding HasNoSshMatch, Converter={x:Static pupitre:Converters.TrueToVisible}}" />
                             </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Hidden terminals: out of the way, but still one click from opening or showing again. -->
+                        <ToggleButton IsChecked="{Binding IsHiddenExpanded}" Style="{StaticResource RowButtonStyle}" Margin="6,0"
+                                      Foreground="{StaticResource MutedForegroundBrush}" FontSize="11"
+                                      Visibility="{Binding IsHiddenSectionVisible, Converter={x:Static pupitre:Converters.TrueToVisible}}">
+                            <DockPanel>
+                                <TextBlock Style="{StaticResource ChevronStyle}" Tag="{Binding IsHiddenListVisible}" />
+                                <TextBlock Text="{Binding HiddenHeader}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </DockPanel>
+                        </ToggleButton>
+
+                        <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto"
+                                      Visibility="{Binding IsHiddenListVisible, Converter={x:Static pupitre:Converters.TrueToVisible}}">
+                            <ItemsControl ItemsSource="{Binding HiddenProfiles}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource RowButtonStyle}" Margin="6,0" Click="OnProfileClicked"
+                                                ContextMenu="{StaticResource HiddenProfileContextMenu}" Opacity="0.6"
+                                                ToolTip="Clic droit pour l'afficher à nouveau">
+                                            <DockPanel>
+                                                <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource ShellTileTemplate}"
+                                                                Width="20" Height="20" FontSize="8" Margin="0,0,8,0" Focusable="False" />
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </ScrollViewer>
                     </StackPanel>
                 </Border>

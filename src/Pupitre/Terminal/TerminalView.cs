@@ -250,13 +250,13 @@ public sealed class TerminalView : UserControl
         try
         {
             _session = PtySession.Start(
-                Pane.Profile.CommandLine,
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                Pane.Profile.LaunchCommandLine,
+                Pane.Profile.WorkingDirectory(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
                 size);
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or COMException or ArgumentException)
         {
-            WriteToTerminal($"\x1b[31mImpossible de démarrer {Pane.Profile.CommandLine} : {exception.Message}\x1b[0m\r\n");
+            WriteToTerminal($"\x1b[31mImpossible de démarrer {Pane.Profile.LaunchCommandLine} : {exception.Message}\x1b[0m\r\n");
             Pane.MarkExited(exception is System.ComponentModel.Win32Exception win32 ? win32.NativeErrorCode : exception.HResult, TimeSpan.Zero);
             return;
         }

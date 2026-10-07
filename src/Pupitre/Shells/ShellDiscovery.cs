@@ -87,7 +87,7 @@ public static class ShellDiscovery
             .Select(id => ReadDistributionName(distributions, id))
             .OfType<string>()
             .Order()
-            .Select(name => new ShellProfile(name, $"wsl.exe -d {name} --cd {WslHomeDirectory}", ShellKind.Wsl, WslHomeDirectory))
+            .Select(name => new ShellProfile(name, $"wsl.exe -d {name}", ShellKind.Wsl, WslHomeDirectory))
             .ToList();
     }
 
