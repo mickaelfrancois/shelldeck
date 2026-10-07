@@ -15,7 +15,7 @@
 
    Dès lors, chaque tag `v*` joint aussi `ShellDeck-<version>-win-x64.msix` et `-win-arm64.msix` à la release.
 
-4. Publier la politique de confidentialité ci-dessous à une URL **publique** : le Store la demande même pour une application qui ne collecte rien. Le dépôt étant privé, une page GitHub du dépôt ne suffit pas ; un gist public convient.
+4. Publier [`PRIVACY.md`](../PRIVACY.md) à une URL **publique** et la renseigner dans *Propriétés* › *URL de politique de confidentialité* : le Store la demande même pour une application qui ne collecte rien. Le dépôt étant privé, sa page GitHub ne suffit pas ; elle est publiée dans un gist public : https://gist.github.com/mickaelfrancois/be2e4450d09fabc2e64cb3ee9d257bc9. Quand `PRIVACY.md` change, mettre le gist à jour sans changer d'URL : `gh gist edit be2e4450d09fabc2e64cb3ee9d257bc9 PRIVACY.md`.
 
 ## À chaque version
 
@@ -46,7 +46,3 @@
 > • Réglages dans un simple fichier JSON, modifiable à la main et rechargé à chaud.
 
 **Catégorie** : Outils de développement.
-
-## Politique de confidentialité
-
-> ShellDeck ne collecte, ne stocke à distance ni ne transmet aucune donnée personnelle. Les réglages (`%USERPROFILE%\.shelldeck\settings.json`) et le journal d'erreurs restent sur votre ordinateur. Les connexions SSH sont établies par le client OpenSSH de Windows, directement vers les serveurs que vous avez configurés.
