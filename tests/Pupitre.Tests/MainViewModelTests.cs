@@ -289,4 +289,36 @@ public sealed class MainViewModelTests
 
         Assert.Equal([PowerShell], viewModel.Shells.Cast<ShellProfile>());
     }
+
+    [Fact]
+    public void A_short_launcher_has_no_filter_box()
+    {
+        Assert.False(CreateViewModel(new AppSettings()).IsFilterVisible);
+    }
+
+    [Fact]
+    public void Many_ssh_connections_bring_the_filter_box()
+    {
+        var connections = Enumerable.Range(1, 10)
+            .Select(number => new ShellProfile($"srv{number}", $"ssh.exe srv{number}", ShellKind.Ssh, $"me@srv{number}"))
+            .ToList();
+
+        var viewModel = new MainViewModel([PowerShell], connections, new AppSettings(), _ => { });
+
+        Assert.True(viewModel.IsFilterVisible);
+    }
+
+    [Fact]
+    public void Hiding_terminals_until_the_filter_box_goes_away_clears_the_filter()
+    {
+        var connections = Enumerable.Range(1, 10)
+            .Select(number => new ShellProfile($"srv{number}", $"ssh.exe srv{number}", ShellKind.Ssh, $"me@srv{number}"))
+            .ToList();
+        var viewModel = new MainViewModel([PowerShell], connections, new AppSettings(), _ => { });
+        viewModel.FilterText = "srv1";
+
+        viewModel.HideProfile(connections[0]);
+
+        Assert.Equal((false, string.Empty), (viewModel.IsFilterVisible, viewModel.FilterText));
+    }
 }

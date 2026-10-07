@@ -161,6 +161,7 @@
                         </DockPanel>
                         <TextBox x:Name="FilterBox" Style="{StaticResource FilterBoxStyle}" Margin="10,0,10,8"
                                  Tag="Filtrer (nom, hôte, IP)…"
+                                 Visibility="{Binding IsFilterVisible, Converter={x:Static pupitre:Converters.TrueToVisible}}"
                                  Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
                                  PreviewKeyDown="OnFilterKeyDown" />
 

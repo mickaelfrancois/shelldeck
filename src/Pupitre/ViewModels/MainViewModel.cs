@@ -9,6 +9,9 @@ public sealed class MainViewModel : ObservableObject
 {
     private const int LastTabNumber = 9;
 
+    /// <summary>Below this many terminals the whole launcher is seen at a glance: no filter box.</summary>
+    private const int FilterThreshold = 10;
+
     private readonly IReadOnlyList<ShellProfile> _discoveredShells;
     private readonly IReadOnlyList<ShellProfile> _discoveredSshConnections;
     private readonly ObservableCollection<ShellProfile> _shellItems = [];
@@ -90,6 +93,8 @@ public sealed class MainViewModel : ObservableObject
     public bool IsSshListVisible => IsSshExpanded || IsFiltering;
 
     public bool HasNoSshMatch => IsSshListVisible && _sshConnections.IsEmpty;
+
+    public bool IsFilterVisible => _launcher.Visible.Count() > FilterThreshold;
 
     public string FilterText
     {
@@ -336,6 +341,13 @@ public sealed class MainViewModel : ObservableObject
         Fill(_sshItems, _launcher.SshConnections);
         Fill(HiddenProfiles, _launcher.Hidden);
 
+        // Hiding terminals can take the filter box away: a filter left in it would hide terminals with no way to clear it.
+        if (!IsFilterVisible)
+        {
+            FilterText = string.Empty;
+        }
+
+        OnPropertyChanged(nameof(IsFilterVisible));
         OnPropertyChanged(nameof(SshConnectionCount));
         OnPropertyChanged(nameof(SshHeader));
         OnPropertyChanged(nameof(HasNoSshMatch));
