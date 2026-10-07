@@ -15,8 +15,55 @@
   <div id="status" hidden></div>
   <script src="xterm.js"></script>
   <script src="addon-fit.js"></script>
-  <script src="addon-web-links.js"></script>
   <script src="addon-webgl.js"></script>
+  <script>
+    // Plain URLs in the output. Replaces xterm's web-links addon, whose underline drifts onto the text before a
+    // link: after a TUI (Claude Code) repaints the row above, the link's row keeps a stale "wrapped" flag; the
+    // addon then drops that row's empty trailing cells from the text it matches, but still counts them when
+    // mapping the match back to cells. Here every character of the matched text records the cell it came from.
+    const urlPattern = /https?:\/\/[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~[\]`()<>]/gi;
+    const maxWrappedRows = 50;
+
+    function createUrlLinkProvider(term, activate) {
+      return {
+        provideLinks(y, callback) {
+          const buffer = term.buffer.active;
+          // The logical line holding row y (1-based): the rows joined to it by soft wraps.
+          let first = y - 1, last = y - 1;
+          while (first > 0 && buffer.getLine(first)?.isWrapped && y - 1 - first < maxWrappedRows) first--;
+          while (buffer.getLine(last + 1)?.isWrapped && last - (y - 1) < maxWrappedRows) last++;
+
+          let text = '';
+          const cells = []; // cells[i]: the cell text[i] comes from
+          const cell = buffer.getNullCell();
+          for (let row = first; row <= last; row++) {
+            const line = buffer.getLine(row);
+            for (let x = 0; x < line.length; x++) {
+              line.getCell(x, cell);
+              const width = cell.getWidth();
+              if (!width) continue; // right half of a wide character
+              // An empty cell reads as a space, so a URL never runs across a gap.
+              const chars = cell.getChars() || ' ';
+              text += chars;
+              for (let i = 0; i < chars.length; i++) cells.push({ x: x + 1, y: row + 1, width });
+            }
+          }
+
+          const links = [];
+          for (const match of text.matchAll(urlPattern)) {
+            const start = cells[match.index], end = cells[match.index + match[0].length - 1];
+            if (start.y > y || end.y < y || !URL.canParse(match[0])) continue;
+            links.push({
+              text: match[0],
+              range: { start: { x: start.x, y: start.y }, end: { x: end.x + end.width - 1, y: end.y } },
+              activate,
+            });
+          }
+          callback(links);
+        },
+      };
+    }
+  </script>
   <script>
     const container = document.getElementById('terminal');
     const term = new Terminal({
@@ -27,7 +74,7 @@
       scrollback: 10000,
       windowsPty: { backend: 'conpty' },
       theme: { background: '#0c0c0e' },
-      // OSC 8 hyperlinks (e.g. Claude Code's session link); plain URLs go through the web-links addon below.
+      // OSC 8 hyperlinks (e.g. Claude Code's session link); plain URLs go through createUrlLinkProvider.
       linkHandler: { activate: (event, uri) => openLink(event, uri) },
     });
     const fitAddon = new FitAddon.FitAddon();
@@ -51,7 +98,7 @@
     function openLink(event, uri) {
       if (event.ctrlKey) post({ type: 'open-link', data: uri });
     }
-    term.loadAddon(new WebLinksAddon.WebLinksAddon(openLink));
+    term.registerLinkProvider(createUrlLinkProvider(term, openLink));
     term.onData(data => post({ type: 'input', data }));
     term.onResize(({ cols, rows }) => post({ type: 'resize', cols, rows }));
     term.onTitleChange(title => post({ type: 'title', title }));
