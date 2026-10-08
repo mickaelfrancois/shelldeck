@@ -8,6 +8,8 @@
     #terminal { position: absolute; inset: 6px 0 0 8px; }
     #status { position: absolute; top: 10px; right: 16px; z-index: 10; padding: 6px 10px; border-radius: 6px;
               background: #24252d; color: #e4e5ea; border: 1px solid #2f3039; font: 12px 'Segoe UI', sans-serif; }
+    /* xterm only shows its scrollbar while hovering or scrolling: keep it on screen once there is history. */
+    #terminal.has-scrollback .xterm-scrollable-element > .scrollbar.vertical.invisible { opacity: 1; pointer-events: auto; }
   </style>
 </head>
 <body>
@@ -73,7 +75,12 @@
       cursorBlink: true,
       scrollback: 10000,
       windowsPty: { backend: 'conpty' },
-      theme: { background: '#0c0c0e' },
+      theme: {
+        background: '#0c0c0e',
+        scrollbarSliderBackground: 'rgba(121, 121, 121, 0.4)',
+        scrollbarSliderHoverBackground: 'rgba(100, 100, 100, 0.7)',
+        scrollbarSliderActiveBackground: 'rgba(191, 191, 191, 0.4)',
+      },
       // OSC 8 hyperlinks (e.g. Claude Code's session link); plain URLs go through createUrlLinkProvider.
       linkHandler: { activate: (event, uri) => openLink(event, uri) },
     });
@@ -118,6 +125,13 @@
     });
     chrome.webview.addEventListener('message', event => term.write(event.data));
     new ResizeObserver(() => fitAddon.fit()).observe(container);
+
+    // The scrollbar stays visible only when there is something to scroll to: none on a fresh prompt,
+    // none in the alternate screen of full-screen apps (vim, htop), which has no scrollback.
+    const updateScrollbar = () => container.classList.toggle('has-scrollback', term.buffer.active.baseY > 0);
+    term.onWriteParsed(updateScrollbar);
+    term.buffer.onBufferChange(updateScrollbar);
+    term.onResize(updateScrollbar);
 
     // Clipboard: handled here, not by the shell, so it behaves the same in every kind of terminal.
     // The host owns the system clipboard (no browser permission involved); the page only reports intents.
