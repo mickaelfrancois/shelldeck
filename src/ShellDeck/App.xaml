@@ -15,6 +15,7 @@
         <SolidColorBrush x:Key="TerminalBackgroundBrush" Color="#0C0C0E" />
         <SolidColorBrush x:Key="AccentBrush" Color="#6EA8FE" />
         <SolidColorBrush x:Key="AttentionBrush" Color="#F0B43C" />
+        <SolidColorBrush x:Key="ErrorBrush" Color="#E5534B" />
         <SolidColorBrush x:Key="ClaudeBrush" Color="#D97757" />
         <FontFamily x:Key="UiFont">Segoe UI</FontFamily>
         <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>

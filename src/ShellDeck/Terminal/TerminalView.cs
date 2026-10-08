@@ -522,14 +522,10 @@ public sealed class TerminalView : UserControl
     private bool ConfirmPaste(string text, bool bracketedPasteMode)
     {
         var lineCount = text.TrimEnd('\r', '\n').Split('\n').Length;
-        var question = bracketedPasteMode
-            ? $"Coller {text.Length:N0} caractères ?"
-            : $"Coller {lineCount} ligne(s) ?\n\nDans ce terminal, chaque retour à la ligne exécute une commande.";
-
-        var answer = Window.GetWindow(this) is { } owner
-            ? MessageBox.Show(owner, question, App.ProductName, MessageBoxButton.YesNo, MessageBoxImage.Warning)
-            : MessageBox.Show(question, App.ProductName, MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        return answer == MessageBoxResult.Yes;
+        return bracketedPasteMode
+            ? MessageDialog.Confirm(Window.GetWindow(this), $"Coller {text.Length:N0} caractères ?", string.Empty, "Coller")
+            : MessageDialog.Confirm(Window.GetWindow(this), $"Coller {lineCount} ligne(s) ?",
+                "Dans ce terminal, chaque retour à la ligne exécute une commande.", "Coller");
     }
 
     private void ShowStatus(string text)

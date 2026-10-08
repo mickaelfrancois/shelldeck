@@ -30,9 +30,17 @@ public partial class App : Application
     {
         Log(e.Exception);
         e.Handled = true;
-        MessageBox.Show(
-            $"Une erreur inattendue s'est produite :\n{e.Exception.Message}\n\nDétails : {CrashLogPath}",
-            ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        var detail = $"{e.Exception.Message}\n\nDétails : {CrashLogPath}";
+        try
+        {
+            MessageDialog.ShowError(MainWindow, "Une erreur inattendue s'est produite", detail);
+        }
+        catch (Exception dialogException)
+        {
+            // The app's own dialog may be what is broken: the system box still gets the message through.
+            Log(dialogException);
+            MessageBox.Show($"Une erreur inattendue s'est produite :\n{detail}", ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private static void Log(Exception exception)

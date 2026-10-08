@@ -135,7 +135,7 @@ public partial class MainWindow : Window
     private void OnDeleteProfileClicked(object sender, RoutedEventArgs e)
     {
         var profile = DataContextOf<ShellProfile>(sender);
-        if (Confirm($"Supprimer le terminal « {profile.Name} » ?\n\nLes onglets déjà ouverts restent ouverts."))
+        if (Confirm($"Supprimer le terminal « {profile.Name} » ?", "Les onglets déjà ouverts restent ouverts.", "Supprimer"))
         {
             _viewModel.DeleteProfile(profile);
         }
@@ -292,7 +292,7 @@ public partial class MainWindow : Window
         }
 
         var interruption = pane.IsMain && tab.IsClaudeSession ? "Claude Code sera interrompu." : "La commande en cours sera interrompue.";
-        if (pane.HasActivity && !Confirm($"Fermer ce volet ?\n\n{interruption}"))
+        if (pane.HasActivity && !Confirm("Fermer ce volet ?", interruption, "Fermer"))
         {
             return;
         }
@@ -308,7 +308,7 @@ public partial class MainWindow : Window
 
     private void CloseTab(TerminalTab tab)
     {
-        if (tab.HasActivity && !Confirm($"Fermer « {tab.Title} » ?\n\n{InterruptionWarning(tab)}"))
+        if (tab.HasActivity && !Confirm($"Fermer « {tab.Title} » ?", InterruptionWarning(tab), "Fermer"))
         {
             return;
         }
@@ -322,7 +322,7 @@ public partial class MainWindow : Window
         if (activeTabs.Count > 0)
         {
             var list = string.Join("\n", activeTabs.Select(tab => $"  • {tab.Title} : {ActivityName(tab)}"));
-            if (!Confirm($"Quitter {App.ProductName} ?\n\nCes onglets ont une activité en cours :\n{list}"))
+            if (!Confirm($"Quitter {App.ProductName} ?", $"Ces onglets ont une activité en cours :\n{list}", "Quitter"))
             {
                 e.Cancel = true;
                 return;
@@ -338,8 +338,8 @@ public partial class MainWindow : Window
     private static string InterruptionWarning(TerminalTab tab) =>
         tab.IsClaudeSession ? "Claude Code sera interrompu." : "La commande en cours sera interrompue.";
 
-    private bool Confirm(string question) =>
-        MessageBox.Show(this, question, App.ProductName, MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK;
+    private bool Confirm(string heading, string detail, string confirmText) =>
+        MessageDialog.Confirm(this, heading, detail, confirmText);
 
     private void RestoreWindowPlacement()
     {
