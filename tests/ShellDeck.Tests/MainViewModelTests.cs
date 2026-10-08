@@ -211,6 +211,53 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void A_moved_tab_takes_its_new_place_in_the_list_and_for_tab_numbers()
+    {
+        var viewModel = CreateViewModelWithTabs(3);
+        var last = viewModel.Tabs[2];
+
+        viewModel.MoveTab(last, 0);
+        viewModel.SelectTabByNumber(1);
+
+        Assert.Equal((0, last), (viewModel.Tabs.IndexOf(last), viewModel.SelectedTab));
+    }
+
+    [Fact]
+    public void Moving_a_tab_leaves_the_terminals_in_opening_order()
+    {
+        var viewModel = CreateViewModelWithTabs(3);
+        var openingOrder = viewModel.Terminals.ToList();
+
+        viewModel.MoveTab(viewModel.Tabs[0], 2);
+
+        Assert.Equal(openingOrder, viewModel.Terminals);
+    }
+
+    [Fact]
+    public void A_closed_tab_leaves_the_terminals_too()
+    {
+        var viewModel = CreateViewModelWithTabs(2);
+        var closed = viewModel.Tabs[0];
+
+        viewModel.Close(closed);
+
+        Assert.DoesNotContain(closed, viewModel.Terminals);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(3)]
+    public void A_move_outside_the_list_keeps_the_order(int index)
+    {
+        var viewModel = CreateViewModelWithTabs(3);
+        var order = viewModel.Tabs.ToList();
+
+        viewModel.MoveTab(viewModel.Tabs[1], index);
+
+        Assert.Equal(order, viewModel.Tabs);
+    }
+
+    [Fact]
     public void Enter_on_an_empty_filter_opens_the_default_profile()
     {
         var viewModel = CreateViewModel(new AppSettings(DefaultProfileName: "Ubuntu-26.04"));

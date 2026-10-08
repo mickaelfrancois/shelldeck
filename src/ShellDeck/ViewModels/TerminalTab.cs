@@ -35,6 +35,7 @@ public sealed class TerminalTab : ObservableObject
 
     private string _title;
     private bool _isSelected;
+    private bool _isDragged;
     private bool _isClaudeSession;
     private TerminalStatus _status = TerminalStatus.Running;
     private string? _notification;
@@ -89,6 +90,13 @@ public sealed class TerminalTab : ObservableObject
                 AcknowledgeIfWatched();
             }
         }
+    }
+
+    /// <summary>Held by the mouse in the tab list, while it is being moved to a new place.</summary>
+    public bool IsDragged
+    {
+        get => _isDragged;
+        set => SetField(ref _isDragged, value);
     }
 
     public bool IsClaudeSession

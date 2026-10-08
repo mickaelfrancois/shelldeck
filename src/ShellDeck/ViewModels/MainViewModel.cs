@@ -16,6 +16,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IReadOnlyList<ShellProfile> _discoveredSshConnections;
     private readonly ObservableCollection<ShellProfile> _shellItems = [];
     private readonly ObservableCollection<ShellProfile> _sshItems = [];
+    private readonly ObservableCollection<TerminalTab> _terminals = [];
     private readonly ListCollectionView _shells;
     private readonly ListCollectionView _sshConnections;
     private readonly Action<AppSettings> _saveSettings;
@@ -38,13 +39,21 @@ public sealed class MainViewModel : ObservableObject
         _discoveredSshConnections = sshConnections;
         _shells = new ListCollectionView(_shellItems) { Filter = MatchesFilter };
         _sshConnections = new ListCollectionView(_sshItems) { Filter = MatchesFilter };
+        Terminals = new ReadOnlyObservableCollection<TerminalTab>(_terminals);
         ArrangeProfiles();
     }
 
     /// <summary>Raised when a tab the user is not looking at needs them.</summary>
     public event EventHandler<TerminalTab>? AttentionRequested;
 
+    /// <summary>The tab list, in the order the user arranged it.</summary>
     public ObservableCollection<TerminalTab> Tabs { get; } = [];
+
+    /// <summary>
+    /// The same tabs in opening order, for the terminal area. Reordering <see cref="Tabs"/> there would move the
+    /// terminals in the visual tree, and a terminal view unloaded on the way ends its session.
+    /// </summary>
+    public ReadOnlyObservableCollection<TerminalTab> Terminals { get; }
 
     public ICollectionView Shells => _shells;
 
@@ -201,6 +210,7 @@ public sealed class MainViewModel : ObservableObject
         tab.AttentionRequested += (_, _) => AttentionRequested?.Invoke(this, tab);
         tab.Ended += (_, _) => Close(tab);
         Tabs.Add(tab);
+        _terminals.Add(tab);
         SelectedTab = tab;
         FilterText = string.Empty;
     }
@@ -236,10 +246,21 @@ public sealed class MainViewModel : ObservableObject
         var wasSelected = SelectedTab == tab || SelectedTab is null;
         var closedIndex = Tabs.IndexOf(tab);
         Tabs.Remove(tab);
+        _terminals.Remove(tab);
 
         if (wasSelected)
         {
             SelectedTab = Tabs.ElementAtOrDefault(Math.Min(closedIndex, Tabs.Count - 1));
+        }
+    }
+
+    /// <summary>Puts the tab at <paramref name="index"/> in the tab list, e.g. while it is dragged there.</summary>
+    public void MoveTab(TerminalTab tab, int index)
+    {
+        var currentIndex = Tabs.IndexOf(tab);
+        if (currentIndex >= 0 && index >= 0 && index < Tabs.Count && index != currentIndex)
+        {
+            Tabs.Move(currentIndex, index);
         }
     }
 
