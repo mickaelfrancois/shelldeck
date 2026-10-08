@@ -259,11 +259,15 @@
                     <TextBlock Text="ONGLETS" Style="{StaticResource SectionHeaderStyle}" />
                 </DockPanel>
 
-                <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
+                <!-- Tabs are reordered by dragging them: they move live under the cursor. -->
+                <ListBox x:Name="TabList" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
                          Background="Transparent" BorderThickness="0" Padding="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AllowDrop="True" DragOver="OnTabListDragOver" Drop="OnTabListDrop">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
+                            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnTabMouseDown" />
+                            <EventSetter Event="PreviewMouseMove" Handler="OnTabMouseMove" />
                             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}" />
                             <Setter Property="Template">
                                 <Setter.Value>
@@ -271,7 +275,9 @@
                                         <Grid Margin="0,1">
                                             <Rectangle x:Name="AttentionBar" Width="3" Margin="0,8" RadiusX="1.5" RadiusY="1.5"
                                                        HorizontalAlignment="Left" Fill="{StaticResource AttentionBrush}" Visibility="Collapsed" />
-                                            <Border x:Name="Chrome" Margin="6,0" Padding="8,7" CornerRadius="6" Background="Transparent">
+                                            <!-- The 1px border is always there, transparent, so outlining a dragged tab does not shift its content. -->
+                                            <Border x:Name="Chrome" Margin="6,0" Padding="7,6" CornerRadius="6" Background="Transparent"
+                                                    BorderThickness="1" BorderBrush="Transparent">
                                                 <ContentPresenter />
                                             </Border>
                                         </Grid>
@@ -284,6 +290,10 @@
                                             </Trigger>
                                             <DataTrigger Binding="{Binding Status}" Value="{x:Static viewModels:TerminalStatus.Attention}">
                                                 <Setter TargetName="AttentionBar" Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsDragged}" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeSelectedBrush}" />
+                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                                             </DataTrigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
@@ -372,7 +382,7 @@
             <TextBlock Text="Aucun onglet ouvert. Choisissez un shell en bas du panneau." Foreground="{StaticResource MutedForegroundBrush}"
                        FontFamily="{StaticResource MonoFont}" Margin="12,10"
                        Visibility="{Binding Tabs.Count, Converter={x:Static shelldeck:Converters.ZeroToVisible}}" />
-            <ItemsControl ItemsSource="{Binding Tabs}">
+            <ItemsControl ItemsSource="{Binding Terminals}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <Grid />

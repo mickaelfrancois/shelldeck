@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -30,6 +31,9 @@ public partial class MainWindow : Window
 
     // The state to restore when the window is closed while minimized from the taskbar.
     private bool _wasMaximized;
+
+    // Where the left button went down on a tab: a drag starts once the mouse has moved far enough from it.
+    private Point? _tabDragStart;
 
     public MainWindow()
     {
@@ -142,6 +146,63 @@ public partial class MainWindow : Window
 
     private void OnCloseTabClicked(object sender, RoutedEventArgs e) =>
         CloseTab(DataContextOf<TerminalTab>(sender));
+
+    private void OnTabMouseDown(object sender, MouseButtonEventArgs e) => _tabDragStart = e.GetPosition(this);
+
+    private void OnTabMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_tabDragStart is not { } start || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var offset = e.GetPosition(this) - start;
+        if (Math.Abs(offset.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(offset.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        _tabDragStart = null;
+        var tab = DataContextOf<TerminalTab>(sender);
+        var originalIndex = _viewModel.Tabs.IndexOf(tab);
+        tab.IsDragged = true;
+        try
+        {
+            // The tab moves while it is dragged (OnTabListDragOver): dropped outside the list, or Escape, puts it back.
+            if (DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(typeof(TerminalTab), tab), DragDropEffects.Move) == DragDropEffects.None)
+            {
+                _viewModel.MoveTab(tab, originalIndex);
+            }
+        }
+        finally
+        {
+            tab.IsDragged = false;
+        }
+    }
+
+    private void OnTabListDragOver(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (e.Data.GetData(typeof(TerminalTab)) is not TerminalTab dragged)
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        if (ItemsControl.ContainerFromElement(TabList, (DependencyObject)e.OriginalSource) is ListBoxItem { DataContext: TerminalTab target })
+        {
+            _viewModel.MoveTab(dragged, _viewModel.Tabs.IndexOf(target));
+        }
+    }
+
+    // The order is already in place: the drop only tells the drag it ended in the list.
+    private void OnTabListDrop(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(TerminalTab)) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
 
     /// <summary>Shortcuts typed outside the terminal (filter, tab list); the terminal reports its own.</summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
