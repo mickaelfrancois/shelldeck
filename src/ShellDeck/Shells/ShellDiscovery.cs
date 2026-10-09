@@ -23,6 +23,7 @@ public static class ShellDiscovery
         var sshClient = File.Exists(bundledClient) ? Quote(bundledClient) : "ssh.exe";
 
         return SshConfig.ReadUserHosts()
+            .OrderBy(host => host.Alias, StringComparer.CurrentCultureIgnoreCase)
             .Select(host => new ShellProfile(host.Alias, $"{sshClient} {host.Alias}", ShellKind.Ssh, host.Target))
             .ToList();
     }
