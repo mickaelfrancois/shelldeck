@@ -1,5 +1,6 @@
 using System.Windows;
 using ShellDeck.Shells;
+using ShellDeck.Terminal;
 
 namespace ShellDeck.ViewModels;
 
@@ -37,6 +38,9 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
         get => _bounds;
         private set => SetField(ref _bounds, value);
     }
+
+    /// <summary>The running shell; kept here so it outlives the views WPF unloads and rebuilds.</summary>
+    internal ShellSession? Session { get; set; }
 
     public bool IsExited { get; private set; }
 
@@ -80,6 +84,13 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
         IsExited = true;
         ExitCode = exitCode;
         _owner.OnPaneExited(this, exitCode, lifetime);
+    }
+
+    /// <summary>The pane is closed: its shell ends with it.</summary>
+    internal void EndSession()
+    {
+        Session?.Dispose();
+        Session = null;
     }
 
     /// <summary>The user clicked into the pane.</summary>

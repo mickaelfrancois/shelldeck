@@ -230,6 +230,7 @@ public sealed class TerminalTab : ObservableObject
         var successor = FirstPane(Sibling(_root, pane) ?? _root);
         _root = Remove(_root, pane) ?? _root;
         Panes.Remove(pane);
+        pane.EndSession();
         Arrange();
         OnPropertyChanged(nameof(IsSplit));
 
@@ -241,6 +242,15 @@ public sealed class TerminalTab : ObservableObject
         if (pane == ActivePane)
         {
             Activate(successor);
+        }
+    }
+
+    /// <summary>The tab is closed: all its shells end.</summary>
+    internal void EndSessions()
+    {
+        foreach (var pane in Panes)
+        {
+            pane.EndSession();
         }
     }
 

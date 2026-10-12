@@ -247,10 +247,20 @@ public sealed class MainViewModel : ObservableObject
         var closedIndex = Tabs.IndexOf(tab);
         Tabs.Remove(tab);
         _terminals.Remove(tab);
+        tab.EndSessions();
 
         if (wasSelected)
         {
             SelectedTab = Tabs.ElementAtOrDefault(Math.Min(closedIndex, Tabs.Count - 1));
+        }
+    }
+
+    /// <summary>The app is closing: every shell ends with it.</summary>
+    public void EndAllSessions()
+    {
+        foreach (var tab in Tabs)
+        {
+            tab.EndSessions();
         }
     }
 

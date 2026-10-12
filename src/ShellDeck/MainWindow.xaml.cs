@@ -76,7 +76,11 @@ public partial class MainWindow : Window
             _settingsReloadTimer.Stop();
             _settingsReloadTimer.Start();
         }));
-        Closed += (_, _) => _settingsWatcher.Dispose();
+        Closed += (_, _) =>
+        {
+            _settingsWatcher.Dispose();
+            _viewModel.EndAllSessions();
+        };
         StateChanged += (_, _) =>
         {
             if (WindowState != WindowState.Minimized)
