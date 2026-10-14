@@ -60,7 +60,8 @@
         </Style>
 
         <!-- Shared by every tab of the list: its DataContext is the TerminalTab it was opened on. -->
-        <ContextMenu x:Key="TabContextMenu">
+        <!-- Items with a Tag are enabled when the menu opens, depending on the tabs around (OnTabContextMenuOpened). -->
+        <ContextMenu x:Key="TabContextMenu" Opened="OnTabContextMenuOpened">
             <MenuItem Header="Dupliquer l'onglet" Click="OnDuplicateTabClicked" />
             <MenuItem Header="Fractionner verticalement" Click="OnSplitTabRightClicked"
                       InputGestureText="{Binding Source={x:Static shelldeck:ShortcutAction.SplitRight}, Converter={x:Static shelldeck:Converters.ShortcutKeys}}" />
@@ -68,6 +69,11 @@
                       InputGestureText="{Binding Source={x:Static shelldeck:ShortcutAction.SplitDown}, Converter={x:Static shelldeck:Converters.ShortcutKeys}}" />
             <Separator />
             <MenuItem Header="Modifier la couleur de l'onglet…" Click="OnEditTabColorClicked" />
+            <Separator />
+            <MenuItem Header="Fermer l'onglet" Click="OnCloseTabClicked" />
+            <MenuItem Header="Fermer les onglets ci-dessus" Click="OnCloseTabsAboveClicked" Tag="Above" />
+            <MenuItem Header="Fermer les onglets ci-dessous" Click="OnCloseTabsBelowClicked" Tag="Below" />
+            <MenuItem Header="Fermer les autres onglets" Click="OnCloseOtherTabsClicked" Tag="Others" />
         </ContextMenu>
 
         <!-- Star shown next to the profile opened at startup. -->

@@ -91,6 +91,10 @@
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeHoverBrush}" />
                             </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+                                <Setter Property="Opacity" Value="0.6" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
