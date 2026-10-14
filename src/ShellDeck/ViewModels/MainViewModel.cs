@@ -262,6 +262,14 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>The tabs listed above <paramref name="tab"/>, top first.</summary>
+    public IReadOnlyList<TerminalTab> TabsAbove(TerminalTab tab) => Tabs.TakeWhile(other => other != tab).ToList();
+
+    /// <summary>The tabs listed below <paramref name="tab"/>, top first.</summary>
+    public IReadOnlyList<TerminalTab> TabsBelow(TerminalTab tab) => Tabs.SkipWhile(other => other != tab).Skip(1).ToList();
+
+    public IReadOnlyList<TerminalTab> OtherTabs(TerminalTab tab) => Tabs.Where(other => other != tab).ToList();
+
     /// <summary>The app is closing: every shell ends with it.</summary>
     public void EndAllSessions()
     {

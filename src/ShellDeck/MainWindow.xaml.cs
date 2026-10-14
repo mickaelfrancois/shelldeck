@@ -166,6 +166,31 @@ public partial class MainWindow : Window
         tab.Split(direction);
     }
 
+    private void OnCloseTabsAboveClicked(object sender, RoutedEventArgs e) =>
+        CloseTabs(_viewModel.TabsAbove(DataContextOf<TerminalTab>(sender)));
+
+    private void OnCloseTabsBelowClicked(object sender, RoutedEventArgs e) =>
+        CloseTabs(_viewModel.TabsBelow(DataContextOf<TerminalTab>(sender)));
+
+    private void OnCloseOtherTabsClicked(object sender, RoutedEventArgs e) =>
+        CloseTabs(_viewModel.OtherTabs(DataContextOf<TerminalTab>(sender)));
+
+    /// <summary>Greys out the bulk closes that would close nothing, e.g. "above" on the first tab.</summary>
+    private void OnTabContextMenuOpened(object sender, RoutedEventArgs e)
+    {
+        var menu = (ContextMenu)sender;
+        var tab = (TerminalTab)menu.DataContext;
+        foreach (var item in menu.Items.OfType<MenuItem>().Where(item => item.Tag is string))
+        {
+            item.IsEnabled = item.Tag switch
+            {
+                "Above" => _viewModel.TabsAbove(tab).Count > 0,
+                "Below" => _viewModel.TabsBelow(tab).Count > 0,
+                _ => _viewModel.OtherTabs(tab).Count > 0,
+            };
+        }
+    }
+
     private void OnEditTabColorClicked(object sender, RoutedEventArgs e)
     {
         TabColorFlyout.DataContext = DataContextOf<TerminalTab>(sender);
@@ -365,20 +390,43 @@ public partial class MainWindow : Window
         _viewModel.Close(tab);
     }
 
+    /// <summary>One confirmation for all the tabs, listing those with something running.</summary>
+    private void CloseTabs(IReadOnlyList<TerminalTab> tabs)
+    {
+        var heading = tabs.Count == 1 ? $"Fermer « {tabs[0].Title} » ?" : $"Fermer {tabs.Count} onglets ?";
+        if (!ConfirmActivity(tabs, heading, "Fermer"))
+        {
+            return;
+        }
+
+        foreach (var tab in tabs)
+        {
+            _viewModel.Close(tab);
+        }
+    }
+
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        var activeTabs = _viewModel.Tabs.Where(tab => tab.HasActivity).ToList();
-        if (activeTabs.Count > 0)
+        if (!ConfirmActivity(_viewModel.Tabs, $"Quitter {App.ProductName} ?", "Quitter"))
         {
-            var list = string.Join("\n", activeTabs.Select(tab => $"  • {tab.Title} : {ActivityName(tab)}"));
-            if (!Confirm($"Quitter {App.ProductName} ?", $"Ces onglets ont une activité en cours :\n{list}", "Quitter"))
-            {
-                e.Cancel = true;
-                return;
-            }
+            e.Cancel = true;
+            return;
         }
 
         SaveWindowPlacement();
+    }
+
+    /// <summary>True when none of <paramref name="tabs"/> has activity, or the user accepts to interrupt it.</summary>
+    private bool ConfirmActivity(IEnumerable<TerminalTab> tabs, string heading, string confirmText)
+    {
+        var activeTabs = tabs.Where(tab => tab.HasActivity).ToList();
+        if (activeTabs.Count == 0)
+        {
+            return true;
+        }
+
+        var list = string.Join("\n", activeTabs.Select(tab => $"  • {tab.Title} : {ActivityName(tab)}"));
+        return Confirm(heading, $"Ces onglets ont une activité en cours :\n{list}", confirmText);
     }
 
     private static string ActivityName(TerminalTab tab) =>

@@ -297,6 +297,23 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Tabs_above_below_and_others_follow_the_order_of_the_tab_list()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+        viewModel.Open(PowerShell);
+        viewModel.Open(Ubuntu);
+        viewModel.Open(Docker01);
+        var (first, middle, last) = (viewModel.Tabs[0], viewModel.Tabs[1], viewModel.Tabs[2]);
+        viewModel.MoveTab(last, 0);
+
+        Assert.Equal([last], viewModel.TabsAbove(first));
+        Assert.Equal([middle], viewModel.TabsBelow(first));
+        Assert.Equal([last, middle], viewModel.OtherTabs(first));
+        Assert.Empty(viewModel.TabsAbove(last));
+        Assert.Empty(viewModel.TabsBelow(middle));
+    }
+
+    [Fact]
     public void Closing_the_selected_tab_selects_the_one_that_takes_its_place()
     {
         var viewModel = CreateViewModel(new AppSettings());
