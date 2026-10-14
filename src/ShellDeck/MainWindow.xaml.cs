@@ -151,6 +151,21 @@ public partial class MainWindow : Window
     private void OnCloseTabClicked(object sender, RoutedEventArgs e) =>
         CloseTab(DataContextOf<TerminalTab>(sender));
 
+    private void OnDuplicateTabClicked(object sender, RoutedEventArgs e) =>
+        _viewModel.Duplicate(DataContextOf<TerminalTab>(sender));
+
+    private void OnSplitTabRightClicked(object sender, RoutedEventArgs e) => SplitTab(sender, SplitDirection.Right);
+
+    private void OnSplitTabDownClicked(object sender, RoutedEventArgs e) => SplitTab(sender, SplitDirection.Down);
+
+    /// <summary>The menu may come from a tab in the background: it is shown first, so the new pane is seen.</summary>
+    private void SplitTab(object sender, SplitDirection direction)
+    {
+        var tab = DataContextOf<TerminalTab>(sender);
+        _viewModel.SelectedTab = tab;
+        tab.Split(direction);
+    }
+
     private void OnEditTabColorClicked(object sender, RoutedEventArgs e)
     {
         TabColorFlyout.DataContext = DataContextOf<TerminalTab>(sender);

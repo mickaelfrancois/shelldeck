@@ -59,6 +59,16 @@
             </Setter>
         </Style>
 
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Margin="6,4" Background="{StaticResource LineBrush}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="MenuItem">
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}" />
             <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
@@ -67,7 +77,15 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">
                         <Border x:Name="Chrome" Background="Transparent" CornerRadius="4" Padding="10,6">
-                            <ContentPresenter ContentSource="Header" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter ContentSource="Header" />
+                                <TextBlock Grid.Column="1" Margin="24,0,0,0" HorizontalAlignment="Right"
+                                           Text="{TemplateBinding InputGestureText}" Foreground="{StaticResource MutedForegroundBrush}" />
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
