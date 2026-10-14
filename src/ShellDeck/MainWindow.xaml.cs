@@ -151,6 +151,36 @@ public partial class MainWindow : Window
     private void OnCloseTabClicked(object sender, RoutedEventArgs e) =>
         CloseTab(DataContextOf<TerminalTab>(sender));
 
+    private void OnEditTabColorClicked(object sender, RoutedEventArgs e)
+    {
+        TabColorFlyout.DataContext = DataContextOf<TerminalTab>(sender);
+        TabColorFlyout.IsOpen = true;
+    }
+
+    private void OnTabColorClicked(object sender, RoutedEventArgs e) => SetTabColor(DataContextOf<TabColor>(sender));
+
+    private void OnResetTabColorClicked(object sender, RoutedEventArgs e) => SetTabColor(TabColor.None);
+
+    private void OnCustomTabColorClicked(object sender, RoutedEventArgs e)
+    {
+        var current = (TabColorFlyout.DataContext as TerminalTab)?.Color.Hex;
+        TabColorFlyout.IsOpen = false;
+        if (ColorPicker.Pick(this, current) is { } hex)
+        {
+            SetTabColor(TabColor.Custom(hex));
+        }
+    }
+
+    /// <summary>Gives the color to the tab the flyout was opened on, and closes it.</summary>
+    private void SetTabColor(TabColor color)
+    {
+        TabColorFlyout.IsOpen = false;
+        if (TabColorFlyout.DataContext is TerminalTab tab)
+        {
+            tab.Color = color;
+        }
+    }
+
     private void OnTabMouseDown(object sender, MouseButtonEventArgs e) => _tabDragStart = e.GetPosition(this);
 
     private void OnTabMouseMove(object sender, MouseEventArgs e)

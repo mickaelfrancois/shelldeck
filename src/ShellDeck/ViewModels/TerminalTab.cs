@@ -37,6 +37,7 @@ public sealed class TerminalTab : ObservableObject
     private bool _isSelected;
     private bool _isDragged;
     private bool _isClaudeSession;
+    private TabColor _color = TabColor.None;
     private TerminalStatus _status = TerminalStatus.Running;
     private string? _notification;
     private int _exitCode;
@@ -97,6 +98,13 @@ public sealed class TerminalTab : ObservableObject
     {
         get => _isDragged;
         set => SetField(ref _isDragged, value);
+    }
+
+    /// <summary>Chosen by the user in the tab list; lives as long as the tab.</summary>
+    public TabColor Color
+    {
+        get => _color;
+        set => SetField(ref _color, value);
     }
 
     public bool IsClaudeSession
