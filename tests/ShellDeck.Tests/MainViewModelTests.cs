@@ -278,6 +278,25 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void A_duplicated_tab_opens_right_after_the_original_with_its_profile_and_color()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+        viewModel.Open(PowerShell);
+        viewModel.Open(Docker01);
+        var original = viewModel.Tabs[0];
+        original.Color = TabColor.Custom("#336699");
+
+        viewModel.Duplicate(original);
+
+        var duplicate = viewModel.Tabs[1];
+        Assert.NotSame(original, duplicate);
+        Assert.Equal(PowerShell, duplicate.Profile);
+        Assert.Equal(original.Color, duplicate.Color);
+        Assert.Same(duplicate, viewModel.SelectedTab);
+        Assert.Equal(3, viewModel.Terminals.Count);
+    }
+
+    [Fact]
     public void Closing_the_selected_tab_selects_the_one_that_takes_its_place()
     {
         var viewModel = CreateViewModel(new AppSettings());

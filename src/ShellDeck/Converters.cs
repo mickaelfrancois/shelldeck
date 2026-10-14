@@ -19,6 +19,20 @@ public static class Converters
     /// <summary>Visible when all bound values are equal, e.g. an item's name and the selected name.</summary>
     public static IMultiValueConverter EqualToVisible { get; } = new EqualityVisibilityConverter();
 
+    /// <summary>The first key of a <see cref="ShortcutAction"/>, as menus show it next to the command.</summary>
+    public static IValueConverter ShortcutKeys { get; } = new ShortcutKeysConverter();
+
+    private sealed class ShortcutKeysConverter : IValueConverter
+    {
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+            value is ShortcutAction action && Shortcuts.All.FirstOrDefault(shortcut => shortcut.Action == action) is { } shortcut
+                ? ShortcutHelp.Format(shortcut)
+                : string.Empty;
+
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
     private sealed class EqualityVisibilityConverter : IMultiValueConverter
     {
         public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture) =>

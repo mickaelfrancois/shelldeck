@@ -61,6 +61,12 @@
 
         <!-- Shared by every tab of the list: its DataContext is the TerminalTab it was opened on. -->
         <ContextMenu x:Key="TabContextMenu">
+            <MenuItem Header="Dupliquer l'onglet" Click="OnDuplicateTabClicked" />
+            <MenuItem Header="Fractionner verticalement" Click="OnSplitTabRightClicked"
+                      InputGestureText="{Binding Source={x:Static shelldeck:ShortcutAction.SplitRight}, Converter={x:Static shelldeck:Converters.ShortcutKeys}}" />
+            <MenuItem Header="Fractionner horizontalement" Click="OnSplitTabDownClicked"
+                      InputGestureText="{Binding Source={x:Static shelldeck:ShortcutAction.SplitDown}, Converter={x:Static shelldeck:Converters.ShortcutKeys}}" />
+            <Separator />
             <MenuItem Header="Modifier la couleur de l'onglet…" Click="OnEditTabColorClicked" />
         </ContextMenu>
 

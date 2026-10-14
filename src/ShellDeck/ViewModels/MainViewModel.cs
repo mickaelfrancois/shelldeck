@@ -204,15 +204,22 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public void Open(ShellProfile profile)
+    public void Open(ShellProfile profile) => Open(profile, Tabs.Count);
+
+    /// <summary>A new tab right after <paramref name="tab"/>, with its profile and color, as Windows Terminal's "Duplicate tab".</summary>
+    public void Duplicate(TerminalTab tab) =>
+        Open(tab.Profile, Tabs.IndexOf(tab) + 1).Color = tab.Color;
+
+    private TerminalTab Open(ShellProfile profile, int index)
     {
         var tab = new TerminalTab(profile);
         tab.AttentionRequested += (_, _) => AttentionRequested?.Invoke(this, tab);
         tab.Ended += (_, _) => Close(tab);
-        Tabs.Add(tab);
+        Tabs.Insert(index, tab);
         _terminals.Add(tab);
         SelectedTab = tab;
         FilterText = string.Empty;
+        return tab;
     }
 
     /// <summary>A new tab without choosing: the default profile, as Windows Terminal's Ctrl+Shift+T.</summary>
