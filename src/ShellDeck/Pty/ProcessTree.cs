@@ -9,10 +9,25 @@ public static class ProcessTree
 {
     private const uint SnapshotProcesses = 0x00000002;
 
-    // Console hosts belong to the pseudo console itself, not to a command the user started.
-    private static readonly HashSet<string> ConsoleHosts = new(StringComparer.OrdinalIgnoreCase) { "conhost.exe", "OpenConsole.exe" };
+    // Console hosts belong to the pseudo console itself, and wslhost.exe to the WSL session: not commands the user started.
+    private static readonly HashSet<string> HostProcesses = new(StringComparer.OrdinalIgnoreCase) { "conhost.exe", "OpenConsole.exe", "wslhost.exe" };
 
-    public static bool HasChildProcesses(int parentProcessId)
+    public static bool HasChildProcesses(int parentProcessId) => HasCommand(Snapshot(), parentProcessId);
+
+    /// <summary>
+    /// True when <paramref name="processId"/> runs a command. A child with the same executable is the shell relaunching
+    /// itself, not a command: wsl.exe starts a second wsl.exe that holds the Linux session, whose own processes are not
+    /// Windows processes. Its children are looked at instead: a Windows program run from WSL (code.exe…) is one of them.
+    /// </summary>
+    public static bool HasCommand(IReadOnlyList<ProcessInfo> processes, int processId)
+    {
+        var executable = processes.FirstOrDefault(process => process.Id == processId)?.Executable;
+        return processes
+            .Where(process => process.ParentId == processId && !HostProcesses.Contains(process.Executable))
+            .Any(child => !string.Equals(child.Executable, executable, StringComparison.OrdinalIgnoreCase) || HasCommand(processes, child.Id));
+    }
+
+    private static List<ProcessInfo> Snapshot()
     {
         using var snapshot = CreateToolhelp32Snapshot(SnapshotProcesses, 0);
         if (snapshot.IsInvalid)
@@ -20,17 +35,17 @@ public static class ProcessTree
             throw new Win32Exception();
         }
 
+        var processes = new List<ProcessInfo>();
         var entry = new ProcessEntry { dwSize = Marshal.SizeOf<ProcessEntry>() };
         for (var found = Process32First(snapshot, ref entry); found; found = Process32Next(snapshot, ref entry))
         {
-            if (entry.th32ParentProcessID == parentProcessId && !ConsoleHosts.Contains(entry.szExeFile))
-            {
-                return true;
-            }
+            processes.Add(new(entry.th32ProcessID, entry.th32ParentProcessID, entry.szExeFile));
         }
 
-        return false;
+        return processes;
     }
+
+    public sealed record ProcessInfo(int Id, int ParentId, string Executable);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct ProcessEntry
