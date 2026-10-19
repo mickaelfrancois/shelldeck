@@ -184,18 +184,21 @@
     });
 
     // Linux style: selecting copies, right or middle click pastes.
+    // An app tracking the mouse (Claude Code, vim, tmux) already receives the click and may paste on its own:
+    // pasting here too would paste twice. As in Windows Terminal, Shift keeps the click for the terminal.
+    const clickPastes = event => event.shiftKey || term.modes.mouseTrackingMode === 'none';
     container.addEventListener('mouseup', event => {
       if (event.button === 0 && term.hasSelection()) copySelection();
     });
     container.addEventListener('contextmenu', event => {
       event.preventDefault();
-      requestPaste(false);
+      if (clickPastes(event)) requestPaste(false);
     });
     container.addEventListener('mousedown', event => {
       if (event.button === 1) event.preventDefault(); // no autoscroll on middle click
     });
     container.addEventListener('auxclick', event => {
-      if (event.button === 1) requestPaste(false);
+      if (event.button === 1 && clickPastes(event)) requestPaste(false);
     });
 
     // Any other way into the browser's own paste (e.g. an unforeseen key combination) would hand xterm the raw
