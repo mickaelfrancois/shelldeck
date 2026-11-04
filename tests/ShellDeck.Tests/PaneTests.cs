@@ -8,6 +8,8 @@ namespace ShellDeck.Tests;
 public sealed class PaneTests
 {
     private static readonly ShellProfile Ubuntu = new("Ubuntu-26.04", "wsl.exe -d Ubuntu-26.04", ShellKind.Wsl, "~");
+    private static readonly ShellProfile Docker01 = new("docker01", "ssh.exe docker01", ShellKind.Ssh, "me@192.0.2.65");
+    private static readonly ShellProfile PowerShell = new("PowerShell", "pwsh.exe", ShellKind.PowerShell, "~");
 
     private static TerminalTab CreateSplitTab(out TerminalPane main, out TerminalPane side)
     {
@@ -24,6 +26,40 @@ public sealed class PaneTests
         var tab = CreateSplitTab(out var main, out var side);
 
         Assert.Equal((2, Ubuntu, true, false), (tab.Panes.Count, side.Profile, side.IsActive, main.IsActive));
+    }
+
+    [Fact]
+    public void Splitting_with_another_profile_opens_it_in_the_new_pane_that_takes_the_keyboard()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+        var main = tab.MainPane;
+
+        tab.Split(SplitDirection.Right, Docker01);
+
+        var side = tab.ActivePane;
+        Assert.Equal((2, Docker01, true, false), (tab.Panes.Count, side.Profile, side.IsActive, main.IsActive));
+    }
+
+    [Fact]
+    public void Splitting_without_a_profile_keeps_the_active_pane_profile()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+        tab.Split(SplitDirection.Right, Docker01);
+
+        tab.Split(SplitDirection.Down);
+
+        Assert.Equal((Docker01, 3), (tab.ActivePane.Profile, tab.Panes.Count));
+    }
+
+    [Fact]
+    public void Splitting_with_another_profile_keeps_the_tab_header_of_the_main_pane()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+        var before = (tab.Profile, tab.Title, tab.Subtitle);
+
+        tab.Split(SplitDirection.Down, PowerShell);
+
+        Assert.Equal(before, (tab.Profile, tab.Title, tab.Subtitle));
     }
 
     [Fact]

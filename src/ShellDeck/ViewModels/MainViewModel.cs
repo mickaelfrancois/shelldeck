@@ -61,6 +61,12 @@ public sealed class MainViewModel : ObservableObject
 
     public int SshConnectionCount => _launcher.SshConnections.Count;
 
+    /// <summary>Shells a pane can be split with: not filtered, without the hidden ones, in launcher order.</summary>
+    public IReadOnlyList<ShellProfile> SplitShells => _launcher.Shells;
+
+    /// <summary>SSH connections a pane can be split with: not filtered, without the hidden ones, in launcher order.</summary>
+    public IReadOnlyList<ShellProfile> SplitSshConnections => _launcher.SshConnections;
+
     /// <summary>Not filtered: hidden terminals are out of the way until the user looks for them here.</summary>
     public ObservableCollection<ShellProfile> HiddenProfiles { get; } = [];
 
@@ -209,6 +215,16 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>A new tab right after <paramref name="tab"/>, with its profile and color, as Windows Terminal's "Duplicate tab".</summary>
     public void Duplicate(TerminalTab tab) =>
         Open(tab.Profile, Tabs.IndexOf(tab) + 1).Color = tab.Color;
+
+    /// <summary>
+    /// Brings <paramref name="tab"/> forward and splits its active pane with <paramref name="profile"/> (the active
+    /// pane's own profile when null); the new pane takes the keyboard. The launcher filter is left as typed.
+    /// </summary>
+    public void Split(TerminalTab tab, SplitDirection direction, ShellProfile? profile = null)
+    {
+        SelectedTab = tab;
+        tab.Split(direction, profile);
+    }
 
     private TerminalTab Open(ShellProfile profile, int index)
     {

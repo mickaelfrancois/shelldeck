@@ -206,10 +206,13 @@ public sealed class TerminalTab : ObservableObject
     /// <summary>The main pane's shell ended.</summary>
     public void MarkExited(int exitCode, TimeSpan lifetime) => MainPane.MarkExited(exitCode, lifetime);
 
-    /// <summary>Splits the active pane; the new pane runs the same profile and takes the keyboard.</summary>
-    public void Split(SplitDirection direction)
+    /// <summary>
+    /// Splits the active pane; the new pane runs <paramref name="profile"/> (the active pane's own profile when null)
+    /// and takes the keyboard. The tab header keeps following the main pane.
+    /// </summary>
+    public void Split(SplitDirection direction, ShellProfile? profile = null)
     {
-        var pane = new TerminalPane(this, ActivePane.Profile);
+        var pane = new TerminalPane(this, profile ?? ActivePane.Profile);
         var split = new PaneSplit(direction, ActivePane, pane);
         split.PropertyChanged += (_, e) =>
         {

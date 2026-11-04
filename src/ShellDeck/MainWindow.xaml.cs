@@ -159,12 +159,8 @@ public partial class MainWindow : Window
     private void OnSplitTabDownClicked(object sender, RoutedEventArgs e) => SplitTab(sender, SplitDirection.Down);
 
     /// <summary>The menu may come from a tab in the background: it is shown first, so the new pane is seen.</summary>
-    private void SplitTab(object sender, SplitDirection direction)
-    {
-        var tab = DataContextOf<TerminalTab>(sender);
-        _viewModel.SelectedTab = tab;
-        tab.Split(direction);
-    }
+    private void SplitTab(object sender, SplitDirection direction) =>
+        _viewModel.Split(DataContextOf<TerminalTab>(sender), direction);
 
     private void OnCloseTabsAboveClicked(object sender, RoutedEventArgs e) =>
         CloseTabs(_viewModel.TabsAbove(DataContextOf<TerminalTab>(sender)));
@@ -175,7 +171,10 @@ public partial class MainWindow : Window
     private void OnCloseOtherTabsClicked(object sender, RoutedEventArgs e) =>
         CloseTabs(_viewModel.OtherTabs(DataContextOf<TerminalTab>(sender)));
 
-    /// <summary>Greys out the bulk closes that would close nothing, e.g. "above" on the first tab.</summary>
+    /// <summary>
+    /// Greys out the bulk closes that would close nothing, e.g. "above" on the first tab, and fills the
+    /// "split with…" submenus with the launcher's current profiles.
+    /// </summary>
     private void OnTabContextMenuOpened(object sender, RoutedEventArgs e)
     {
         var menu = (ContextMenu)sender;
@@ -188,6 +187,38 @@ public partial class MainWindow : Window
                 "Below" => _viewModel.TabsBelow(tab).Count > 0,
                 _ => _viewModel.OtherTabs(tab).Count > 0,
             };
+        }
+
+        foreach (var item in menu.Items.OfType<MenuItem>().Where(item => item.Tag is SplitDirection))
+        {
+            FillSplitMenu(item, tab, (SplitDirection)item.Tag);
+        }
+    }
+
+    /// <summary>One entry per visible profile, shells then SSH connections, read anew at each opening.</summary>
+    private void FillSplitMenu(MenuItem menu, TerminalTab tab, SplitDirection direction)
+    {
+        var shells = _viewModel.SplitShells;
+        var connections = _viewModel.SplitSshConnections;
+        menu.Items.Clear();
+        AddSplitEntries(menu, tab, direction, shells);
+        if (shells.Count > 0 && connections.Count > 0)
+        {
+            menu.Items.Add(new Separator());
+        }
+
+        AddSplitEntries(menu, tab, direction, connections);
+        menu.IsEnabled = menu.Items.Count > 0;
+    }
+
+    private void AddSplitEntries(MenuItem menu, TerminalTab tab, SplitDirection direction, IEnumerable<ShellProfile> profiles)
+    {
+        foreach (var profile in profiles)
+        {
+            // A TextBlock shows the name as is: a string header could read "_" as an access key.
+            var entry = new MenuItem { Header = new TextBlock { Text = profile.Name } };
+            entry.Click += (_, _) => _viewModel.Split(tab, direction, profile);
+            menu.Items.Add(entry);
         }
     }
 
