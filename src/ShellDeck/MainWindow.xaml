@@ -67,6 +67,9 @@
                       InputGestureText="{Binding Source={x:Static shelldeck:ShortcutAction.SplitRight}, Converter={x:Static shelldeck:Converters.ShortcutKeys}}" />
             <MenuItem Header="Fractionner horizontalement" Click="OnSplitTabDownClicked"
                       InputGestureText="{Binding Source={x:Static shelldeck:ShortcutAction.SplitDown}, Converter={x:Static shelldeck:Converters.ShortcutKeys}}" />
+            <!-- Filled with the launcher's profiles when the menu opens; the Tag is the split direction. -->
+            <MenuItem Header="Fractionner verticalement avec…" Tag="{x:Static viewModels:SplitDirection.Right}" />
+            <MenuItem Header="Fractionner horizontalement avec…" Tag="{x:Static viewModels:SplitDirection.Down}" />
             <Separator />
             <MenuItem Header="Modifier la couleur de l'onglet…" Click="OnEditTabColorClicked" />
             <Separator />

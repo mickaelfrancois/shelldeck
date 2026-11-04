@@ -404,4 +404,66 @@ public sealed class MainViewModelTests
 
         Assert.Equal((false, string.Empty), (viewModel.IsFilterVisible, viewModel.FilterText));
     }
+
+    [Fact]
+    public void Split_profiles_list_visible_shells_then_connections_in_launcher_order()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+
+        Assert.Equal([PowerShell, Ubuntu], viewModel.SplitShells);
+        Assert.Equal([Docker01], viewModel.SplitSshConnections);
+    }
+
+    [Fact]
+    public void Split_profiles_ignore_the_launcher_filter()
+    {
+        var connections = Enumerable.Range(1, 11)
+            .Select(number => new ShellProfile($"srv{number}", $"ssh.exe srv{number}", ShellKind.Ssh, $"me@srv{number}"))
+            .ToList();
+        var viewModel = new MainViewModel([PowerShell], connections, new AppSettings(), _ => { });
+        viewModel.HideProfile(connections[^1]);
+        viewModel.FilterText = "srv10";
+
+        Assert.Equal("srv10", viewModel.FilterText);
+        Assert.Equal([PowerShell], viewModel.SplitShells);
+        Assert.Equal(connections.SkipLast(1), viewModel.SplitSshConnections);
+    }
+
+    [Fact]
+    public void Split_profiles_leave_out_hidden_profiles()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+
+        viewModel.HideProfile(Ubuntu);
+        viewModel.HideProfile(Docker01);
+
+        Assert.Equal([PowerShell], viewModel.SplitShells);
+        Assert.Empty(viewModel.SplitSshConnections);
+    }
+
+    [Fact]
+    public void Split_profiles_follow_a_profile_moved_or_hidden_after_creation()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+        viewModel.HideProfile(Docker01);
+
+        viewModel.MoveProfile(PowerShell, 1);
+        viewModel.ShowProfile(Docker01);
+
+        Assert.Equal([Ubuntu, PowerShell], viewModel.SplitShells);
+        Assert.Equal([Docker01], viewModel.SplitSshConnections);
+    }
+
+    [Fact]
+    public void Splitting_a_background_tab_selects_it_and_its_new_pane_takes_the_keyboard()
+    {
+        var viewModel = CreateViewModelWithOpenTab(out var background);
+        viewModel.Open(PowerShell);
+
+        viewModel.Split(background, SplitDirection.Right, Docker01);
+
+        Assert.Equal(
+            (background, 2, Docker01, true),
+            (viewModel.SelectedTab, background.Panes.Count, background.ActivePane.Profile, background.ActivePane.IsActive));
+    }
 }
