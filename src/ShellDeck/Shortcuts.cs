@@ -21,6 +21,7 @@ public enum ShortcutAction
     ResizePaneUp,
     ResizePaneRight,
     ResizePaneDown,
+    OpenSearch,
 }
 
 /// <summary>
@@ -64,6 +65,7 @@ public static class Shortcuts
         new(ShortcutAction.ResizePaneUp, Key.Up, "ArrowUp", AltShift),
         new(ShortcutAction.ResizePaneRight, Key.Right, "ArrowRight", AltShift),
         new(ShortcutAction.ResizePaneDown, Key.Down, "ArrowDown", AltShift),
+        new(ShortcutAction.OpenSearch, Key.F, "KeyF", CtrlShift),
     ];
 
     /// <summary>Modifiers must match exactly: AltGr (Ctrl+Alt) types characters and never triggers a shortcut.</summary>

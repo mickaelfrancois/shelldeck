@@ -269,4 +269,16 @@ public sealed class PaneTests
 
         Assert.False(ended);
     }
+
+    [Fact]
+    public void RequestSearch_raises_SearchRequested()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+        var raised = 0;
+        tab.MainPane.SearchRequested += (_, _) => raised++;
+
+        tab.MainPane.RequestSearch();
+
+        Assert.Equal(1, raised);
+    }
 }

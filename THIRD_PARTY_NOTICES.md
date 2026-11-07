@@ -1,6 +1,6 @@
 # Third-party notices
 
-ShellDeck bundles xterm.js and its addons, including `@xterm/addon-unicode11` 0.9.0 (`src/ShellDeck/wwwroot`), distributed under the MIT license:
+ShellDeck bundles xterm.js (`@xterm/xterm` 6.0.0) and its addons, including `@xterm/addon-unicode11` 0.9.0 and `@xterm/addon-search` 0.16.0 (`src/ShellDeck/wwwroot`), distributed under the MIT license:
 
 ```
 Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)

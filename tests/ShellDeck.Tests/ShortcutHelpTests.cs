@@ -29,4 +29,34 @@ public sealed class ShortcutHelpTests
 
         Assert.Equal("Alt+←↑→↓", row.Keys);
     }
+
+    [Fact]
+    public void Search_uses_ctrl_shift_f()
+    {
+        Assert.Equal("Ctrl+Maj+F", ShortcutHelp.KeysOf(ShortcutAction.OpenSearch));
+    }
+
+    [Fact]
+    public void Shortcuts_are_unique()
+    {
+        var duplicates = Shortcuts.All.GroupBy(shortcut => (shortcut.Key, shortcut.Modifiers)).Where(group => group.Count() > 1);
+
+        Assert.Empty(duplicates);
+    }
+
+    [Fact]
+    public void Prompt_navigation_is_described()
+    {
+        var entries = ShortcutHelp.Sections.SelectMany(section => section.Entries);
+
+        Assert.Contains(entries, entry => entry.Keys.Contains("Ctrl+↑"));
+    }
+
+    [Fact]
+    public void Output_selection_is_described()
+    {
+        var entries = ShortcutHelp.Sections.SelectMany(section => section.Entries);
+
+        Assert.Contains(entries, entry => entry.Keys.Contains("Ctrl+Maj+O"));
+    }
 }
