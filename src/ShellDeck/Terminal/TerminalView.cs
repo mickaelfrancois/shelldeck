@@ -136,7 +136,7 @@ public sealed class TerminalView : UserControl, IOutputSink
         core.ProcessFailed += OnProcessFailed;
         core.NewWindowRequested += (_, args) => args.Handled = true;
         core.NavigationStarting += (_, args) => args.Cancel = !IsTerminalPage(args.Uri);
-        core.Navigate($"https://{VirtualHostName}/terminal.html");
+        core.Navigate($"https://{VirtualHostName}/terminal.html?conptyBuild={PseudoConsoleApi.Current.BuildNumber}");
     }
 
     /// <summary>The shell keeps running: the pane ends it when it is closed.</summary>

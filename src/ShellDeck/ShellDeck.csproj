@@ -22,4 +22,30 @@
     <Resource Include="Assets\shelldeck.ico" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- Architecture of the bundled ConPTY binaries: the target RID when set (publish -r),
+         otherwise the SDK's own RID (plain dotnet build). Only x64 and arm64 are shipped;
+         any other RID gets no binaries and the app falls back to the inbox ConPTY. -->
+    <ConPtyRid>$(RuntimeIdentifier)</ConPtyRid>
+    <ConPtyRid Condition="'$(ConPtyRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</ConPtyRid>
+    <ConPtyArch Condition="$(ConPtyRid.StartsWith('win-x64'))">x64</ConPtyArch>
+    <ConPtyArch Condition="$(ConPtyRid.StartsWith('win-arm64'))">arm64</ConPtyArch>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Modern ConPTY (conpty.dll + OpenConsole.exe), same as Windows Terminal ships.
+         IncludeAssets="none": the package's implicit native assets land in runtimes/<rid>/native
+         and its OpenConsole.exe is not copied next to conpty.dll, so both files are placed
+         explicitly at the output root below (conpty.dll starts OpenConsole.exe from its own folder). -->
+    <PackageReference Include="Microsoft.Windows.Console.ConPTY" Version="1.25.260930003"
+                      GeneratePathProperty="true" IncludeAssets="none" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ConPtyArch)' != ''">
+    <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)\runtimes\win-$(ConPtyArch)\native\conpty.dll"
+          Link="conpty.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)\build\native\runtimes\$(ConPtyArch)\OpenConsole.exe"
+          Link="OpenConsole.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
