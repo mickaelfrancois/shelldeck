@@ -57,4 +57,4 @@ Le numéro du tag devient la version de l'exécutable. Côté utilisateur, il su
 
 ## New-MsixPackage.ps1
 
-Empaquette une publication de ShellDeck en MSIX pour le Microsoft Store. Le workflow de release l'appelle dès que l'identité Store est déclarée ; la procédure complète est dans [`packaging/STORE.md`](../packaging/STORE.md). Nécessite le SDK Windows (`makeappx.exe`).
+Empaquette une publication de ShellDeck en MSIX pour le Microsoft Store. Le workflow de release l'appelle dès que l'identité Store est déclarée ; la procédure complète est dans [`packaging/STORE.md`](../packaging/STORE.md). Nécessite le SDK Windows (`makeappx.exe`). Le script vérifie que `conpty.dll` et `OpenConsole.exe` (ConPTY moderne, comme Windows Terminal) sont à la racine de la publication et s'arrête sinon : publiez avec `-r win-x64` ou `-r win-arm64`.

@@ -43,6 +43,14 @@ while ($parts.Count -lt 4) { $parts += 0 }
 if ($parts.Count -gt 4 -or $parts[3] -ne 0) { throw "Version ${Version}: the Store needs at most three parts (the fourth, revision, must be 0)." }
 $packageVersion = $parts -join '.'
 
+# The modern ConPTY (conpty.dll + OpenConsole.exe) must sit at the root of the publication: without it the app
+# silently falls back to the inbox ConPTY, so fail here rather than ship a package without it.
+foreach ($file in 'conpty.dll', 'OpenConsole.exe') {
+    if (-not (Test-Path -LiteralPath (Join-Path $PublishDirectory $file))) {
+        throw "$file not found in ${PublishDirectory}: publish with the target runtime (dotnet publish -r win-$Architecture) so the ConPTY binaries are bundled."
+    }
+}
+
 $staging = Join-Path ([System.IO.Path]::GetTempPath()) "shelldeck-msix-$([guid]::NewGuid())"
 try {
     Copy-Item -Path $PublishDirectory -Destination $staging -Recurse

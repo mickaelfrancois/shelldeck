@@ -13,14 +13,16 @@ namespace ShellDeck.Pty;
 /// </summary>
 public sealed class PtySession : IDisposable
 {
+    private readonly PseudoConsoleApi _api;
     private readonly IntPtr _pseudoConsole;
     private readonly ProcessExitWaitHandle _processExit;
     private RegisteredWaitHandle? _exitWait;
     private volatile bool _disposed;
 
-    private PtySession(IntPtr pseudoConsole, Stream input, Stream output, ProcessExitWaitHandle processExit, int processId)
+    private PtySession(PseudoConsoleApi api, IntPtr pseudoConsole, Stream input, Stream output, ProcessExitWaitHandle processExit, int processId)
     {
         ProcessId = processId;
+        _api = api;
         _pseudoConsole = pseudoConsole;
         Input = input;
         Output = output;
@@ -36,7 +38,10 @@ public sealed class PtySession : IDisposable
 
     public Stream Output { get; }
 
-    public static PtySession Start(string commandLine, string? workingDirectory, TerminalSize size)
+    public static PtySession Start(string commandLine, string? workingDirectory, TerminalSize size) =>
+        Start(commandLine, workingDirectory, size, PseudoConsoleApi.Current);
+
+    public static PtySession Start(string commandLine, string? workingDirectory, TerminalSize size, PseudoConsoleApi api)
     {
         SafeFileHandle? consoleInputRead = null, inputWrite = null, outputRead = null, consoleOutputWrite = null;
         var pseudoConsole = IntPtr.Zero;
@@ -46,7 +51,7 @@ public sealed class PtySession : IDisposable
             CreatePipeOrThrow(out consoleInputRead, out inputWrite);
             CreatePipeOrThrow(out outputRead, out consoleOutputWrite);
 
-            var result = CreatePseudoConsole(size.ToCoord(), consoleInputRead, consoleOutputWrite, 0, out pseudoConsole);
+            var result = api.Create(size.ToCoord(), consoleInputRead, consoleOutputWrite, 0, out pseudoConsole);
             if (result < 0)
             {
                 pseudoConsole = IntPtr.Zero;
@@ -60,6 +65,7 @@ public sealed class PtySession : IDisposable
             var process = StartAttachedProcess(commandLine, workingDirectory, pseudoConsole);
 
             return new PtySession(
+                api,
                 pseudoConsole,
                 new FileStream(inputWrite, FileAccess.Write),
                 new FileStream(outputRead, FileAccess.Read),
@@ -71,7 +77,7 @@ public sealed class PtySession : IDisposable
             // Otherwise each failed start (e.g. a shell uninstalled since discovery) leaves a conhost running.
             if (pseudoConsole != IntPtr.Zero)
             {
-                ClosePseudoConsole(pseudoConsole);
+                api.Close(pseudoConsole);
             }
 
             consoleInputRead?.Dispose();
@@ -102,7 +108,7 @@ public sealed class PtySession : IDisposable
             return;
         }
 
-        var result = ResizePseudoConsole(_pseudoConsole, size.ToCoord());
+        var result = _api.Resize(_pseudoConsole, size.ToCoord());
         if (result < 0)
         {
             throw new Win32Exception(result);
@@ -120,7 +126,7 @@ public sealed class PtySession : IDisposable
 
         // Closing the pseudo console terminates the attached processes and closes the output pipe,
         // which ends any pending read on Output.
-        ClosePseudoConsole(_pseudoConsole);
+        _api.Close(_pseudoConsole);
         Input.Dispose();
         Output.Dispose();
         _exitWait?.Unregister(null);

@@ -18,6 +18,7 @@
   <script src="xterm.js"></script>
   <script src="addon-fit.js"></script>
   <script src="addon-webgl.js"></script>
+  <script src="addon-unicode11.js"></script>
   <script>
     // Plain URLs in the output. Replaces xterm's web-links addon, whose underline drifts onto the text before a
     // link: after a TUI (Claude Code) repaints the row above, the link's row keeps a stale "wrapped" flag; the
@@ -68,13 +69,17 @@
   </script>
   <script>
     const container = document.getElementById('terminal');
+    // Build of the ConPTY the host uses (?conptyBuild=N). Omitted when absent or invalid, so xterm keeps its default.
+    const conptyBuildParam = new URLSearchParams(location.search).get('conptyBuild');
+    const conptyBuild = /^\d{1,9}$/.test(conptyBuildParam ?? '') ? Number(conptyBuildParam) : undefined;
     const term = new Terminal({
       // Nerd Font first: prompts such as oh-my-posh draw their icons from its private-use glyphs.
       fontFamily: "'CaskaydiaCove NFM', 'CaskaydiaCove Nerd Font Mono', 'CaskaydiaCove NF', 'Cascadia Mono', Consolas, monospace",
       fontSize: 14,
       cursorBlink: true,
       scrollback: 10000,
-      windowsPty: { backend: 'conpty' },
+      allowProposedApi: true, // required by term.unicode
+      windowsPty: conptyBuild === undefined ? { backend: 'conpty' } : { backend: 'conpty', buildNumber: conptyBuild },
       theme: {
         background: '#0c0c0e',
         scrollbarSliderBackground: 'rgba(121, 121, 121, 0.4)',
@@ -86,6 +91,9 @@
     });
     const fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
+    // Unicode 11 widths (emoji, CJK) as ConPTY computes them; xterm defaults to version 6.
+    term.loadAddon(new Unicode11Addon.Unicode11Addon());
+    term.unicode.activeVersion = '11';
     term.open(container);
     fitAddon.fit();
 
