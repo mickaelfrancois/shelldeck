@@ -96,5 +96,10 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
     /// <summary>The user clicked into the pane.</summary>
     public void RequestActivation() => _owner.Activate(this);
 
+    /// <summary>Asks the pane's view to open its search bar.</summary>
+    public event EventHandler? SearchRequested;
+
+    public void RequestSearch() => SearchRequested?.Invoke(this, EventArgs.Empty);
+
     void IPaneNode.Arrange(Rect area) => Bounds = area;
 }

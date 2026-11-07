@@ -8,6 +8,21 @@
     #terminal { position: absolute; inset: 6px 0 0 8px; }
     #status { position: absolute; top: 10px; right: 16px; z-index: 10; padding: 6px 10px; border-radius: 6px;
               background: #24252d; color: #e4e5ea; border: 1px solid #2f3039; font: 12px 'Segoe UI', sans-serif; }
+    #search { position: absolute; top: 10px; right: 16px; z-index: 11; display: flex; align-items: center; gap: 4px;
+              padding: 4px 6px; border-radius: 6px; background: #24252d; color: #e4e5ea; border: 1px solid #2f3039;
+              font: 12px 'Segoe UI', sans-serif; }
+    #search[hidden] { display: none; }
+    #search input { width: 180px; padding: 3px 6px; border-radius: 4px; border: 1px solid #2f3039; outline: none;
+                    background: #0c0c0e; color: inherit; font: inherit; }
+    #search input:focus { border-color: #5b8def; }
+    #search input.invalid { border-color: #f85149; }
+    #search button { min-width: 24px; height: 22px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px;
+                     background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    #search button:hover { background: #2f3039; }
+    #search button[aria-pressed="true"] { background: #3a4a78; border-color: #5b8def; }
+    #search-count { min-width: 70px; text-align: center; color: #a0a1ab; white-space: nowrap; }
+    #search-count.invalid { color: #f85149; }
+    body.searching #status { top: 52px; }
     /* xterm only shows its scrollbar while hovering or scrolling: keep it on screen once there is history. */
     #terminal.has-scrollback .xterm-scrollable-element > .scrollbar.vertical.invisible { opacity: 1; pointer-events: auto; }
   </style>
@@ -15,10 +30,20 @@
 <body>
   <div id="terminal"></div>
   <div id="status" hidden></div>
+  <div id="search" role="search" hidden>
+    <input id="search-input" type="text" placeholder="Rechercher" aria-label="Rechercher" spellcheck="false" autocomplete="off">
+    <button id="search-case" type="button" title="Respecter la casse" aria-label="Respecter la casse" aria-pressed="false">Aa</button>
+    <button id="search-regex" type="button" title="Expression régulière" aria-label="Expression régulière" aria-pressed="false">.*</button>
+    <span id="search-count" aria-live="polite"></span>
+    <button id="search-prev" type="button" title="Occurrence précédente (Maj+Entrée)" aria-label="Occurrence précédente">&#x2191;</button>
+    <button id="search-next" type="button" title="Occurrence suivante (Entrée)" aria-label="Occurrence suivante">&#x2193;</button>
+    <button id="search-close" type="button" title="Fermer (Échap)" aria-label="Fermer la recherche">&#x2715;</button>
+  </div>
   <script src="xterm.js"></script>
   <script src="addon-fit.js"></script>
   <script src="addon-webgl.js"></script>
   <script src="addon-unicode11.js"></script>
+  <script src="addon-search.js"></script>
   <script>
     // Plain URLs in the output. Replaces xterm's web-links addon, whose underline drifts onto the text before a
     // link: after a TUI (Claude Code) repaints the row above, the link's row keeps a stale "wrapped" flag; the
@@ -94,6 +119,9 @@
     // Unicode 11 widths (emoji, CJK) as ConPTY computes them; xterm defaults to version 6.
     term.loadAddon(new Unicode11Addon.Unicode11Addon());
     term.unicode.activeVersion = '11';
+    // Scrollback search; the search bar (UI) drives it.
+    const searchAddon = new SearchAddon.SearchAddon();
+    term.loadAddon(searchAddon);
     term.open(container);
     fitAddon.fit();
 
@@ -131,6 +159,97 @@
       if (command === 'notify') post({ type: 'notification', data: body.join(';') || title });
       return true;
     });
+    // Shell integration, OSC 133 (FinalTerm / VS Code / oh-my-posh): A = prompt start, B = command start,
+    // C = output start, D = command end ("D;<exit code>"). Other letters (P, E...) and parameters are ignored.
+    // Never displayed; ignored in the alternate screen. Commands are kept as markers so they follow the scrollback.
+    const parseOsc133 = data => {
+      const [kind, ...params] = data.split(';');
+      const letter = kind.charAt(0);
+      if (!'ABCD'.includes(letter) || kind.length !== 1) return null;
+      const exitCode = letter === 'D' && /^-?\d+$/.test(params[0] ?? '') ? parseInt(params[0], 10) : undefined;
+      return { letter, exitCode };
+    };
+    // The line of the previous (direction -1) or next (+1) prompt relative to the first visible line, or -1.
+    const findPromptLine = (lines, viewportY, direction) => {
+      const candidates = lines.filter(line => line >= 0);
+      if (direction < 0) return candidates.filter(line => line < viewportY).reduce((a, b) => Math.max(a, b), -1);
+      return candidates.filter(line => line > viewportY).reduce((a, b) => (a < 0 ? b : Math.min(a, b)), -1);
+    };
+    let commands = []; // { prompt, commandStart, output, end, exitCode, endX }
+    const livePromptLines = () => {
+      commands = commands.filter(command => !command.prompt.isDisposed);
+      return commands.map(command => command.prompt.line);
+    };
+    term.parser.registerOscHandler(133, data => {
+      if (term.buffer.active.type !== 'normal') return true;
+      const mark = parseOsc133(data);
+      if (!mark) return true;
+      if (mark.letter === 'A') {
+        livePromptLines();
+        const prompt = term.registerMarker(0);
+        if (prompt) commands.push({ prompt }); // no marker: ignore the mark
+        return true;
+      }
+      const current = commands[commands.length - 1];
+      if (!current || current.end) return true; // orphan mark (history cut or replayed): tolerated
+      if (mark.letter === 'B') current.commandStart = term.registerMarker(0);
+      else if (mark.letter === 'C') current.output = term.registerMarker(0);
+      else {
+        current.end = term.registerMarker(0);
+        current.exitCode = mark.exitCode;
+        current.endX = term.buffer.active.cursorX;
+        markExitCode(current);
+      }
+      return true;
+    });
+    // Exit code indicator: a 3px bar in the left margin of the prompt line, green for 0, red otherwise.
+    // Without a numeric code (or without an open command) nothing is shown. xterm disposes the decoration with its marker.
+    const markExitCode = command => {
+      if (command.exitCode === undefined) return;
+      const decoration = term.registerDecoration({ marker: command.prompt ?? command.output, x: 0, width: 1, layer: 'top' });
+      decoration?.onRender(element => {
+        element.style.borderLeft = '3px solid ' + (command.exitCode === 0 ? '#3fb950' : '#f85149');
+        element.style.boxSizing = 'border-box';
+        element.title = 'Code de sortie : ' + command.exitCode;
+      });
+    };
+    // The command whose output Ctrl+Shift+O selects: the last complete one that starts on screen with its prompt
+    // at or above the first visible line (after Ctrl+Up, the one whose prompt is at the top); else the last complete one.
+    const currentCompleteCommand = () => {
+      livePromptLines();
+      const complete = commands.filter(command => command.output && command.end
+        && !command.output.isDisposed && !command.end.isDisposed);
+      const top = term.buffer.active.viewportY;
+      const visible = complete.filter(command => command.output.line <= top + term.rows - 1 && command.prompt.line <= top);
+      return visible.length > 0 ? visible[visible.length - 1] : complete[complete.length - 1];
+    };
+    // Output lines: output.line to end.line - 1, plus end.line when the output has no final newline (endX > 0).
+    const outputLineRange = command => {
+      const last = command.endX > 0 ? command.end.line : command.end.line - 1;
+      return last < command.output.line ? null : { start: command.output.line, count: last - command.output.line + 1 };
+    };
+    const selectCommandOutput = () => {
+      if (term.buffer.active.type !== 'normal') return false;
+      const command = currentCompleteCommand();
+      if (!command) return false;
+      const range = outputLineRange(command);
+      if (!range) {
+        window.showStatus("Cette commande n'a rien affiché.");
+        return true;
+      }
+      term.selectLines(range.start, range.start + range.count - 1);
+      copySelection();
+      return true;
+    };
+    const jumpToPrompt = direction => {
+      if (term.buffer.active.type !== 'normal') return false;
+      const lines = livePromptLines();
+      if (lines.length === 0) return false;
+      const line = findPromptLine(lines, term.buffer.active.viewportY, direction);
+      if (line >= 0) term.scrollToLine(line);
+      else if (direction > 0) term.scrollToBottom();
+      return true;
+    };
     chrome.webview.addEventListener('message', event => term.write(event.data));
     new ResizeObserver(() => fitAddon.fit()).observe(container);
 
@@ -183,6 +302,18 @@
         term.clearSelection();
         return false;
       }
+      // Ctrl+Up / Ctrl+Down jump between prompts, only when the shell emits OSC 133: otherwise the key stays the shell's.
+      if ((event.code === 'ArrowUp' || event.code === 'ArrowDown') && event.ctrlKey && !event.altKey
+          && !event.shiftKey && !event.metaKey && jumpToPrompt(event.code === 'ArrowUp' ? -1 : 1)) {
+        event.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+O selects and copies the output of the current command, only when a complete one is marked.
+      if (event.code === 'KeyO' && event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey
+          && selectCommandOutput()) {
+        event.preventDefault();
+        return false;
+      }
       if (isCtrlKey(event, 'KeyV') || (event.shiftKey && event.key === 'Insert')) {
         event.preventDefault(); // stops the browser's own paste, which would paste a second time
         requestPaste(true);
@@ -228,10 +359,136 @@
       statusTimer = setTimeout(() => { status.hidden = true; }, 2500);
     };
 
-    window.focusTerminal = () => term.focus();
+    // Search bar. The addon only reports results (onDidChangeResults) when decorations are passed.
+    const searchBar = document.getElementById('search');
+    const searchInput = document.getElementById('search-input');
+    const searchCount = document.getElementById('search-count');
+    const searchCase = document.getElementById('search-case');
+    const searchRegex = document.getElementById('search-regex');
+    const searchDecorations = {
+      matchBackground: '#5a4a1f',
+      activeMatchBackground: '#d18616',
+      matchOverviewRuler: '#5a4a1f',
+      activeMatchColorOverviewRuler: '#d18616',
+    };
+    // Whether the page's last focus was in the search bar, so focusTerminal() does not pull it back to the terminal.
+    let searchHasFocus = false;
+
+    const isPressed = button => button.getAttribute('aria-pressed') === 'true';
+    const setSearchCount = (text, invalid) => {
+      searchCount.textContent = text;
+      searchCount.classList.toggle('invalid', !!invalid);
+    };
+    const searchOptions = incremental => ({
+      regex: isPressed(searchRegex),
+      caseSensitive: isPressed(searchCase),
+      incremental,
+      decorations: searchDecorations,
+    });
+
+    function runSearch(backwards, incremental) {
+      const value = searchInput.value;
+      searchInput.classList.remove('invalid');
+      if (!value) {
+        searchAddon.clearDecorations();
+        setSearchCount('');
+        return;
+      }
+      // An invalid pattern must never reach the addon: validate it first.
+      if (isPressed(searchRegex)) {
+        try {
+          new RegExp(value, isPressed(searchCase) ? 'g' : 'gi'); // same flags as addon-search.js
+        } catch {
+          searchInput.classList.add('invalid');
+          searchAddon.clearDecorations();
+          setSearchCount('Regex invalide', true);
+          return;
+        }
+      }
+      let found;
+      try {
+        found = backwards
+          ? searchAddon.findPrevious(value, searchOptions(incremental))
+          : searchAddon.findNext(value, searchOptions(incremental));
+      } catch {
+        searchInput.classList.add('invalid');
+        setSearchCount('Regex invalide', true);
+        return;
+      }
+      if (!found) setSearchCount('Aucun résultat');
+    }
+
+    searchAddon.onDidChangeResults(({ resultIndex, resultCount }) => {
+      if (!searchInput.value || searchInput.classList.contains('invalid')) return;
+      if (resultCount === 0) setSearchCount('Aucun résultat');
+      else if (resultIndex < 0) setSearchCount(`${resultCount}+`); // past the addon's highlight limit
+      else setSearchCount(`${resultIndex + 1} / ${resultCount}`);
+    });
+
+    function closeSearch() {
+      searchAddon.clearDecorations();
+      searchBar.hidden = true;
+      document.body.classList.remove('searching');
+      searchHasFocus = false;
+      term.focus();
+    }
+
+    window.openSearch = () => {
+      const selection = term.getSelection();
+      if (selection && !selection.includes('\n')) searchInput.value = selection;
+      searchBar.hidden = false;
+      document.body.classList.add('searching');
+      searchHasFocus = true;
+      searchInput.focus();
+      searchInput.select();
+      runSearch(false, true);
+    };
+
+    searchInput.addEventListener('input', () => runSearch(false, true));
+    searchInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        runSearch(event.shiftKey, false);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSearch();
+      }
+    });
+    for (const toggle of [searchCase, searchRegex]) {
+      toggle.addEventListener('click', () => {
+        toggle.setAttribute('aria-pressed', String(!isPressed(toggle)));
+        runSearch(false, true);
+        searchInput.focus();
+      });
+    }
+    document.getElementById('search-prev').addEventListener('click', () => runSearch(true, false));
+    document.getElementById('search-next').addEventListener('click', () => runSearch(false, false));
+    document.getElementById('search-close').addEventListener('click', closeSearch);
+    // Application shortcuts (Ctrl+Tab, Ctrl+Shift+T...) keep working while typing in the bar, which xterm's
+    // key handler does not see.
+    document.addEventListener('keydown', event => {
+      if (!event.target.closest?.('#search')) return;
+      const shortcutIndex = findShortcut(event);
+      if (shortcutIndex >= 0) {
+        event.preventDefault();
+        post({ type: 'shortcut', index: shortcutIndex });
+      }
+    });
+
+    window.focusTerminal = () => {
+      if (!searchBar.hidden && searchHasFocus) searchInput.focus();
+      else term.focus();
+    };
 
     // Clicking into a split pane makes it the active one.
-    container.addEventListener('focusin', () => post({ type: 'focus' }));
+    container.addEventListener('focusin', () => {
+      searchHasFocus = false;
+      post({ type: 'focus' });
+    });
+    searchBar.addEventListener('focusin', () => {
+      searchHasFocus = true;
+      post({ type: 'focus' });
+    });
     post({ type: 'ready', cols: term.cols, rows: term.rows });
   </script>
 </body>

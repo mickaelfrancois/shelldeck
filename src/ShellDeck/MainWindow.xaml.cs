@@ -379,6 +379,9 @@ public partial class MainWindow : Window
             case ShortcutAction.ResizePaneDown:
                 _viewModel.SelectedTab?.MoveDivider(PaneDirection.Down);
                 break;
+            case ShortcutAction.OpenSearch:
+                _viewModel.SelectedTab?.ActivePane.RequestSearch();
+                break;
         }
     }
 

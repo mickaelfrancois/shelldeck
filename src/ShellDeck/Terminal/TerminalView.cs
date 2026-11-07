@@ -90,6 +90,7 @@ public sealed class TerminalView : UserControl, IOutputSink
         _hostWindow = Window.GetWindow(this);
         _hostWindow?.Activated += OnHostWindowActivated;
         _pane.PropertyChanged += OnPanePropertyChanged;
+        _pane.SearchRequested += OnSearchRequested;
 
         try
         {
@@ -150,6 +151,7 @@ public sealed class TerminalView : UserControl, IOutputSink
         _webView = null;
         _hostWindow?.Activated -= OnHostWindowActivated;
         _pane?.PropertyChanged -= OnPanePropertyChanged;
+        _pane?.SearchRequested -= OnSearchRequested;
         _attachedSession?.Detach(this);
         _attachedSession = null;
         ((IOutputSink)this).Clear();
@@ -176,6 +178,17 @@ public sealed class TerminalView : UserControl, IOutputSink
     private void OnHostWindowActivated(object? sender, EventArgs e) => FocusIfActive();
 
     private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => FocusIfActive();
+
+    private void OnSearchRequested(object? sender, EventArgs e)
+    {
+        if (_webView is not { CoreWebView2: { } core } webView)
+        {
+            return;
+        }
+
+        webView.Focus();
+        _ = core.ExecuteScriptAsync("openSearch()");
+    }
 
     private void OnPanePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

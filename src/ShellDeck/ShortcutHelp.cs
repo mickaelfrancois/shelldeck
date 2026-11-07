@@ -44,6 +44,11 @@ public static class ShortcutHelp
             new($"Ctrl+V{Separator}Maj+Inser{Separator}clic droit", "Coller", []),
             new("Sélection à la souris", "Copie automatiquement", []),
             new("Ctrl+clic", "Ouvrir un lien", []),
+            Row("Rechercher dans l'historique du terminal", ShortcutAction.OpenSearch),
+            new($"Entrée{Separator}Maj+Entrée", "Recherche : occurrence suivante / précédente", []),
+            new("Échap", "Fermer la recherche", []),
+            new($"Ctrl+↑{Separator}Ctrl+↓", "Aller au prompt précédent / suivant (shell émettant OSC 133)", []),
+            new("Ctrl+Maj+O", "Sélectionner et copier la sortie de la commande (shell émettant OSC 133)", []),
         ]),
         new("Lanceur",
         [
