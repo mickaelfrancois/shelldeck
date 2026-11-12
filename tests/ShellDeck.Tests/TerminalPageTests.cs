@@ -71,6 +71,18 @@ public sealed class TerminalPageTests
     }
 
     [Fact]
+    public void The_page_reports_the_working_directory_from_osc_7_and_osc_9_9()
+    {
+        string html = File.ReadAllText(Path.Combine(FindWwwroot(), "terminal.html"));
+
+        Assert.Contains("registerOscHandler(7", html);
+        Assert.Contains("type: 'cwd'", html);
+        Assert.Contains("data.startsWith('9;')", html);
+        Assert.Contains("type: 'notification', data", html);
+        Assert.Contains("!/^\\d+;/.test(data)", html);
+    }
+
+    [Fact]
     public void The_page_selects_command_output_and_marks_exit_codes()
     {
         string html = File.ReadAllText(Path.Combine(FindWwwroot(), "terminal.html"));

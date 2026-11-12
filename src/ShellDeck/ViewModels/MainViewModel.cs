@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Data;
+using ShellDeck.Session;
 using ShellDeck.Shells;
 
 namespace ShellDeck.ViewModels;
@@ -20,6 +21,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly ListCollectionView _shells;
     private readonly ListCollectionView _sshConnections;
     private readonly Action<AppSettings> _saveSettings;
+    private readonly IClaudeSessionLocator _claudeSessions;
     private AppSettings _settings;
     private LauncherProfiles _launcher = new([], [], []);
     private TerminalTab? _selectedTab;
@@ -31,8 +33,10 @@ public sealed class MainViewModel : ObservableObject
         IReadOnlyList<ShellProfile> shells,
         IReadOnlyList<ShellProfile> sshConnections,
         AppSettings settings,
-        Action<AppSettings> saveSettings)
+        Action<AppSettings> saveSettings,
+        IClaudeSessionLocator? claudeSessions = null)
     {
+        _claudeSessions = claudeSessions ?? TranscriptSessionLocator.ForCurrentUser();
         _settings = settings;
         _saveSettings = saveSettings;
         _discoveredShells = shells;
@@ -40,11 +44,15 @@ public sealed class MainViewModel : ObservableObject
         _shells = new ListCollectionView(_shellItems) { Filter = MatchesFilter };
         _sshConnections = new ListCollectionView(_sshItems) { Filter = MatchesFilter };
         Terminals = new ReadOnlyObservableCollection<TerminalTab>(_terminals);
+        Tabs.CollectionChanged += (_, _) => LayoutChanged?.Invoke(this, EventArgs.Empty);
         ArrangeProfiles();
     }
 
     /// <summary>Raised when a tab the user is not looking at needs them.</summary>
     public event EventHandler<TerminalTab>? AttentionRequested;
+
+    /// <summary>Raised when something session.json keeps changes: tabs opened, closed or moved, the selected tab, any tab's layout.</summary>
+    public event EventHandler? LayoutChanged;
 
     /// <summary>The tab list, in the order the user arranged it.</summary>
     public ObservableCollection<TerminalTab> Tabs { get; } = [];
@@ -159,6 +167,7 @@ public sealed class MainViewModel : ObservableObject
 
             previous?.IsSelected = false;
             value?.IsSelected = true;
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -170,6 +179,8 @@ public sealed class MainViewModel : ObservableObject
     public string? DefaultProfileId => DefaultProfile?.Id;
 
     private bool IsFiltering => FilterText.Trim().Length > 0;
+
+    public RestoreSession RestoreSession => _settings.RestoreSession;
 
     public WindowPlacement? WindowPlacement => _settings.Window;
 
@@ -226,17 +237,98 @@ public sealed class MainViewModel : ObservableObject
         tab.Split(direction, profile);
     }
 
-    private TerminalTab Open(ShellProfile profile, int index)
+    private TerminalTab Open(ShellProfile profile, int index) => Add(new TerminalTab(profile), index);
+
+    private TerminalTab Add(TerminalTab tab, int index)
     {
-        var tab = new TerminalTab(profile);
         tab.AttentionRequested += (_, _) => AttentionRequested?.Invoke(this, tab);
         tab.Ended += (_, _) => Close(tab);
+        tab.LayoutChanged += OnTabLayoutChanged;
+        tab.ClaudeTurnEnded += OnClaudeTurnEnded;
         Tabs.Insert(index, tab);
         _terminals.Add(tab);
         SelectedTab = tab;
         FilterText = string.Empty;
         return tab;
     }
+
+    private void OnClaudeTurnEnded(object? sender, TerminalPane pane) => _ = ResolveClaudeSessionAsync(pane);
+
+    /// <summary>
+    /// Finds which conversation the pane's Claude Code is on: the pane's known conversation while its transcript is still being written, else the transcript written since it was seen, that no other pane
+    /// claims. The disk is read off the UI thread; the result is applied back on it. A failure keeps the previous id.
+    /// </summary>
+    public async Task ResolveClaudeSessionAsync(TerminalPane pane)
+    {
+        // SSH runs Claude elsewhere and WSL keeps its transcripts in the distro: neither is readable here.
+        if (!pane.Profile.HasStartingDirectory || pane.Profile.Kind is ShellKind.Wsl || pane.ClaudeDetectedUtc is not { } since)
+        {
+            return;
+        }
+
+        var claimed = Tabs.SelectMany(tab => tab.Panes)
+            .Where(other => other != pane && other.ClaudeSessionId is not null)
+            .Select(other => other.ClaudeSessionId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var cwd = pane.WorkingDirectory;
+        var knownId = pane.ClaudeSessionId;
+        var knownSince = pane.ClaudeResolvedUtc;
+        var startedUtc = DateTime.UtcNow;
+
+        ClaudeSessionInfo? info;
+        try
+        {
+            info = await Task.Run(() => _claudeSessions.Locate(cwd, since, claimed, knownId, knownSince));
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (info is null || !pane.IsClaudeRunning)
+        {
+            return;
+        }
+
+        pane.ClaudeResolvedUtc = startedUtc;
+        pane.ClaudeDirectory = info.Cwd;
+        pane.ClaudeSessionId = info.SessionId;
+    }
+
+    private void OnTabLayoutChanged(object? sender, EventArgs e) => LayoutChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>The tabs, their panes and the selected tab, as session.json keeps them.</summary>
+    public SessionLayout Snapshot() =>
+        new(SessionLayout.CurrentVersion, [.. Tabs.Select(tab => tab.ToLayout())], Math.Max(0, Tabs.IndexOf(SelectedTab!)));
+
+    /// <summary>
+    /// Opens the tabs of a saved layout and returns how many were opened. A profile that is gone gives way to the default
+    /// profile, a hidden one still counts; with nothing to start a pane the pane is left out. Nothing is opened for an empty
+    /// layout: the caller opens the default terminal.
+    /// </summary>
+    public int Restore(SessionLayout layout)
+    {
+        var opened = new List<TerminalTab>();
+        foreach (var tabLayout in layout.Tabs ?? [])
+        {
+            if (tabLayout is not null && TerminalTab.Restore(tabLayout, ResolveProfile, DefaultProfile) is { } tab)
+            {
+                Add(tab, Tabs.Count);
+                opened.Add(tab);
+            }
+        }
+
+        if (opened.Count > 0)
+        {
+            SelectedTab = opened.ElementAtOrDefault(layout.SelectedTab) ?? opened[0];
+        }
+
+        return opened.Count;
+    }
+
+    /// <summary>By id among every known terminal, the hidden ones included.</summary>
+    private ShellProfile? ResolveProfile(string id) =>
+        _launcher.Shells.Concat(_launcher.SshConnections).Concat(_launcher.Hidden).FirstOrDefault(profile => profile.Id == id);
 
     /// <summary>A new tab without choosing: the default profile, as Windows Terminal's Ctrl+Shift+T.</summary>
     public void OpenDefault()
@@ -270,6 +362,8 @@ public sealed class MainViewModel : ObservableObject
         var closedIndex = Tabs.IndexOf(tab);
         Tabs.Remove(tab);
         _terminals.Remove(tab);
+        tab.LayoutChanged -= OnTabLayoutChanged;
+        tab.ClaudeTurnEnded -= OnClaudeTurnEnded;
         tab.EndSessions();
 
         if (wasSelected)

@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
+using ShellDeck.Session;
 using ShellDeck.Shells;
 using ShellDeck.Terminal;
 
@@ -32,6 +34,8 @@ public sealed class TerminalTab : ObservableObject
 
     // Bounds are sums of fractions: edges that meet can differ by rounding.
     private const double EdgeTolerance = 1e-9;
+
+    private static readonly Regex HexColor = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
 
     private string _title;
     private bool _isSelected;
@@ -104,7 +108,13 @@ public sealed class TerminalTab : ObservableObject
     public TabColor Color
     {
         get => _color;
-        set => SetField(ref _color, value);
+        set
+        {
+            if (SetField(ref _color, value))
+            {
+                LayoutChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
 
     public bool IsClaudeSession
@@ -161,6 +171,16 @@ public sealed class TerminalTab : ObservableObject
     /// <summary>Raised when the main pane needs the user while they are not looking at it.</summary>
     public event EventHandler? AttentionRequested;
 
+    /// <summary>Raised when something session.json keeps changes: panes, splits, ratios, color, active or main pane, a pane's directory.</summary>
+    public event EventHandler? LayoutChanged;
+
+    /// <summary>Raised when Claude Code finishes a turn in one of the panes (main or not).</summary>
+    public event EventHandler<TerminalPane>? ClaudeTurnEnded;
+
+    internal void OnClaudeTurnEnded(TerminalPane pane) => ClaudeTurnEnded?.Invoke(this, pane);
+
+    internal void OnPaneLayoutChanged() => LayoutChanged?.Invoke(this, EventArgs.Empty);
+
     /// <summary>Raised when the last shell of the tab ends after being used (e.g. <c>exit</c>): nothing is left to show.</summary>
     public event EventHandler? Ended;
 
@@ -212,22 +232,32 @@ public sealed class TerminalTab : ObservableObject
     /// </summary>
     public void Split(SplitDirection direction, ShellProfile? profile = null)
     {
-        var pane = new TerminalPane(this, profile ?? ActivePane.Profile);
-        var split = new PaneSplit(direction, ActivePane, pane);
-        split.PropertyChanged += (_, e) =>
+        var pane = AddSplit(ActivePane, direction, profile ?? ActivePane.Profile, out _);
+        ActivateCore(pane);
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Splits <paramref name="target"/>: the new pane takes the second place. Neither is activated, nothing is raised.</summary>
+    private TerminalPane AddSplit(TerminalPane target, SplitDirection direction, ShellProfile profile, out PaneSplit split)
+    {
+        var pane = new TerminalPane(this, profile);
+        var created = new PaneSplit(direction, target, pane);
+        created.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(PaneSplit.Ratio))
             {
                 Arrange();
+                LayoutChanged?.Invoke(this, EventArgs.Empty);
             }
         };
 
-        _root = Replace(_root, ActivePane, split);
+        _root = Replace(_root, target, created);
         Arrange();
-        Splits.Add(split);
+        Splits.Add(created);
         Panes.Add(pane);
         OnPropertyChanged(nameof(IsSplit));
-        Activate(pane);
+        split = created;
+        return pane;
     }
 
     /// <summary>Closes one pane of a split tab; its neighbor takes its place. A side pane becomes main if needed.</summary>
@@ -252,8 +282,10 @@ public sealed class TerminalTab : ObservableObject
 
         if (pane == ActivePane)
         {
-            Activate(successor);
+            ActivateCore(successor);
         }
+
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>The tab is closed: all its shells end.</summary>
@@ -267,9 +299,17 @@ public sealed class TerminalTab : ObservableObject
 
     public void Activate(TerminalPane pane)
     {
+        if (ActivateCore(pane))
+        {
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private bool ActivateCore(TerminalPane pane)
+    {
         if (pane == _activePane || !Panes.Contains(pane))
         {
-            return;
+            return false;
         }
 
         _activePane.IsActive = false;
@@ -277,6 +317,7 @@ public sealed class TerminalTab : ObservableObject
         pane.IsActive = true;
         OnPropertyChanged(nameof(ActivePane));
         AcknowledgeIfWatched();
+        return true;
     }
 
     public void MoveFocus(PaneDirection direction)
@@ -340,12 +381,16 @@ public sealed class TerminalTab : ObservableObject
 
     private static bool IsClose(double a, double b) => Math.Abs(a - b) < EdgeTolerance;
 
+    /// <summary>A non-zero exit right after the start: the shell could not start (unknown distribution, missing directory).</summary>
+    public static bool IsStartupFailure(int exitCode, TimeSpan lifetime) =>
+        exitCode != SuccessExitCode && lifetime < StartupFailureWindow;
+
     internal void OnPaneExited(TerminalPane pane, int exitCode, TimeSpan lifetime)
     {
         // A shell that fails right after starting (unknown distribution, refused SSH connection) stays open
         // so the user can read why. Any other exit closes it: `exit` returns the status of the last command,
         // so a non-zero code alone does not mean the shell failed.
-        var failedAtStartup = exitCode != SuccessExitCode && lifetime < StartupFailureWindow;
+        var failedAtStartup = IsStartupFailure(exitCode, lifetime);
 
         // The exit may be reported just after the pane was closed, before its view is unloaded.
         if (!Panes.Contains(pane))
@@ -374,6 +419,118 @@ public sealed class TerminalTab : ObservableObject
             Ended?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>The tab as saved in session.json; pane indices follow <see cref="Leaves"/>.</summary>
+    public TabLayout ToLayout()
+    {
+        var leaves = Leaves(_root).ToList();
+        return new TabLayout(
+            NodeLayout(_root),
+            Color.Hex is null ? null : Color.Name,
+            Color.Hex,
+            Math.Max(0, leaves.IndexOf(MainPane)),
+            Math.Max(0, leaves.IndexOf(ActivePane)));
+    }
+
+    /// <summary>
+    /// Rebuilds a tab from a saved layout. A pane whose profile <paramref name="resolve"/> does not know takes
+    /// <paramref name="fallback"/>; with no fallback it is left out, and so is a tab with no pane left (null).
+    /// Out-of-range indices and ratios are brought back to something valid.
+    /// </summary>
+    public static TerminalTab? Restore(TabLayout layout, Func<string, ShellProfile?> resolve, ShellProfile? fallback)
+    {
+        var index = 0;
+        if (Resolve(layout.Root, resolve, fallback, ref index) is not { } root)
+        {
+            return null;
+        }
+
+        var tab = new TerminalTab(FirstLeaf(root).Profile);
+        var leaves = new List<(TerminalPane Pane, int Index)>();
+        tab.Populate(root, tab.MainPane, leaves);
+
+        var main = leaves.FirstOrDefault(leaf => leaf.Index == layout.MainPane, leaves[0]).Pane;
+        var active = leaves.FirstOrDefault(leaf => leaf.Index == layout.ActivePane, leaves[0]).Pane;
+        if (main != tab.MainPane)
+        {
+            tab.PromoteToMain(main);
+        }
+
+        tab.ActivateCore(active);
+        tab.Color = ColorOf(layout);
+        return tab;
+    }
+
+    private static TabColor ColorOf(TabLayout layout)
+    {
+        if (layout.ColorHex is not { } hex || !HexColor.IsMatch(hex))
+        {
+            return TabColor.None;
+        }
+
+        return TabColor.Palette.FirstOrDefault(color => string.Equals(color.Hex, hex, StringComparison.OrdinalIgnoreCase))
+            ?? new TabColor(string.IsNullOrWhiteSpace(layout.ColorName) ? TabColor.Custom(hex).Name : layout.ColorName, hex);
+    }
+
+    private void Populate(RestoredNode node, TerminalPane pane, List<(TerminalPane, int)> leaves)
+    {
+        if (node is RestoredLeaf leaf)
+        {
+            pane.Restore(leaf.Layout);
+            leaves.Add((pane, leaf.Index));
+            return;
+        }
+
+        var split = (RestoredSplit)node;
+        var second = AddSplit(pane, split.Layout.Direction, FirstLeaf(split.Second).Profile, out var created);
+        created.Ratio = double.IsFinite(split.Layout.Ratio) ? split.Layout.Ratio : 0.5;
+        Populate(split.First, pane, leaves);
+        Populate(split.Second, second, leaves);
+    }
+
+    private static RestoredNode? Resolve(PaneNodeLayout? node, Func<string, ShellProfile?> resolve, ShellProfile? fallback, ref int index)
+    {
+        if (node?.Pane is { } paneLayout)
+        {
+            var leafIndex = index++;
+            var profile = (paneLayout.ProfileId is { } id ? resolve(id) : null) ?? fallback;
+            return profile is null ? null : new RestoredLeaf(paneLayout, profile, leafIndex);
+        }
+
+        if (node?.Split is not { } splitLayout)
+        {
+            return null;
+        }
+
+        var first = Resolve(splitLayout.First, resolve, fallback, ref index);
+        var second = Resolve(splitLayout.Second, resolve, fallback, ref index);
+        return first is null || second is null ? first ?? second : new RestoredSplit(splitLayout, first, second);
+    }
+
+    private static RestoredLeaf FirstLeaf(RestoredNode node) => node switch
+    {
+        RestoredSplit split => FirstLeaf(split.First),
+        _ => (RestoredLeaf)node,
+    };
+
+    private abstract record RestoredNode;
+
+    private sealed record RestoredLeaf(PaneLayout Layout, ShellProfile Profile, int Index) : RestoredNode;
+
+    private sealed record RestoredSplit(SplitLayout Layout, RestoredNode First, RestoredNode Second) : RestoredNode;
+
+    /// <summary>The panes of the tree, left to right and depth first.</summary>
+    private static IEnumerable<TerminalPane> Leaves(IPaneNode node) => node switch
+    {
+        PaneSplit split => Leaves(split.First).Concat(Leaves(split.Second)),
+        _ => [(TerminalPane)node],
+    };
+
+    private static PaneNodeLayout NodeLayout(IPaneNode node) => node switch
+    {
+        PaneSplit split => new PaneNodeLayout(Split: new SplitLayout(split.Direction, split.Ratio, NodeLayout(split.First), NodeLayout(split.Second))),
+        _ => new PaneNodeLayout(Pane: ((TerminalPane)node).ToLayout()),
+    };
 
     private void PromoteToMain(TerminalPane pane)
     {

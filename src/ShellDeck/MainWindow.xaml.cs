@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Threading;
+using ShellDeck.Session;
 using ShellDeck.Shells;
 using ShellDeck.Terminal;
 using ShellDeck.ViewModels;
@@ -24,6 +25,11 @@ public partial class MainWindow : Window
         settings => settings.Save());
 
     private readonly DispatcherTimer _toastTimer;
+
+    // Saves the layout once the changes calm down; null until the startup layout is in place (and in `never` mode).
+    private static readonly TimeSpan LayoutSaveDelay = TimeSpan.FromMilliseconds(500);
+    private readonly SessionStore _sessionStore = new();
+    private LayoutSaver? _layoutSaver;
 
     // Editors write a file in several steps: reload once they are done.
     private readonly DispatcherTimer _settingsReloadTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
@@ -89,10 +95,51 @@ public partial class MainWindow : Window
             }
         };
 
-        if (_viewModel.DefaultProfile is { } defaultProfile)
+        // The terminals open once the window is shown: `ask` needs a visible owner for its question.
+        Loaded += OnFirstLoaded;
+    }
+
+    private void OnFirstLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnFirstLoaded;
+
+        var mode = _viewModel.RestoreSession;
+        var layout = StartupPlan.Decide(
+            mode,
+            mode == RestoreSession.Never ? null : _sessionStore.Load(),
+            () => Confirm("Restaurer la session ?", "Rouvrir les onglets et volets de la dernière session ?", "Restaurer"));
+
+        if (layout is null || _viewModel.Restore(layout) == 0)
         {
-            _viewModel.Open(defaultProfile);
+            _viewModel.OpenDefault();
         }
+
+        // A user who turned the restore off does not want their directories written to disk either: the saver is always
+        // wired and the mode is checked at each save, so a settings reload to `never` stops the writes at once.
+        _layoutSaver = new LayoutSaver(
+            StartupPlan.SaveUnlessNever(() => _viewModel.RestoreSession, () => _sessionStore.Save(_viewModel.Snapshot())),
+            tick => new DispatcherDebounceTimer(LayoutSaveDelay, tick));
+        _viewModel.LayoutChanged += (_, _) => _layoutSaver.Request();
+        _layoutSaver.Request();
+    }
+
+    private sealed class DispatcherDebounceTimer : IDebounceTimer
+    {
+        private readonly DispatcherTimer _timer;
+
+        public DispatcherDebounceTimer(TimeSpan delay, Action tick)
+        {
+            _timer = new DispatcherTimer { Interval = delay };
+            _timer.Tick += (_, _) => tick();
+        }
+
+        public void Restart()
+        {
+            _timer.Stop();
+            _timer.Start();
+        }
+
+        public void Stop() => _timer.Stop();
     }
 
     private void OnProfileClicked(object sender, RoutedEventArgs e) =>
@@ -448,6 +495,10 @@ public partial class MainWindow : Window
         }
 
         SaveWindowPlacement();
+
+        // Last write, then silence: closing the window tears the tabs down, which must not overwrite the layout with an empty one.
+        _layoutSaver?.Flush();
+        _layoutSaver?.Stop();
     }
 
     /// <summary>True when none of <paramref name="tabs"/> has activity, or the user accepts to interrupt it.</summary>

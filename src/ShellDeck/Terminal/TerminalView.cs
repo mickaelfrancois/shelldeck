@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using ShellDeck.Pty;
+using ShellDeck.Session;
 using ShellDeck.ViewModels;
 
 namespace ShellDeck.Terminal;
@@ -240,6 +241,12 @@ public sealed class TerminalView : UserControl, IOutputSink
             case MessageType.Bell:
                 Pane.ReceiveBell();
                 break;
+            case MessageType.Cwd when message.Data is not null
+                && Pane.Profile.HasStartingDirectory
+                && WorkingDirectoryReport.TryParse(message.Data, out var directory)
+                && TerminalPane.IsUsableDirectory(directory, Pane.Profile):
+                Pane.WorkingDirectory = directory;
+                break;
             case MessageType.Notification when !string.IsNullOrWhiteSpace(message.Data):
                 Pane.ReceiveNotification(message.Data);
                 break;
@@ -255,24 +262,46 @@ public sealed class TerminalView : UserControl, IOutputSink
     private void StartSession(TerminalSize size)
     {
         var pane = Pane;
+        var profile = pane.LaunchProfile;
         try
         {
             pane.Session = ShellSession.Start(
-                pane.Profile.LaunchCommandLine,
-                pane.Profile.WorkingDirectory(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+                profile.LaunchCommandLine,
+                profile.WorkingDirectory(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
                 size,
-                pane.MarkExited);
+                (exitCode, lifetime) => OnShellExited(pane, size, exitCode, lifetime));
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or COMException or ArgumentException)
         {
-            WriteToTerminal($"\x1b[31mImpossible de démarrer {pane.Profile.LaunchCommandLine} : {exception.Message}\x1b[0m\r\n");
+            WriteToTerminal($"\x1b[31mImpossible de démarrer {profile.LaunchCommandLine} : {exception.Message}\x1b[0m\r\n");
             pane.MarkExited(exception is System.ComponentModel.Win32Exception win32 ? win32.NativeErrorCode : exception.HResult, TimeSpan.Zero);
             return;
         }
 
         var session = pane.Session;
         pane.TrackRunningCommands(() => session.HasRunningCommand);
+        if (pane.TakeStartupInput() is { } startupInput)
+        {
+            session.WriteInput(startupInput);
+        }
+
         FocusIfActive();
+    }
+
+    private void OnShellExited(TerminalPane pane, TerminalSize size, int exitCode, TimeSpan lifetime)
+    {
+        if (!pane.TryRestartWithoutRestoredDirectory(exitCode, lifetime))
+        {
+            pane.MarkExited(exitCode, lifetime);
+            return;
+        }
+
+        // The error stays in the history of the old session, which this view stops showing.
+        _attachedSession?.Detach(this);
+        _attachedSession = null;
+        pane.EndSession();
+        StartSession(size);
+        AttachSession();
     }
 
     /// <summary>Shows the shell in this page: its recent output first, then what it writes next.</summary>
@@ -520,6 +549,7 @@ public sealed class TerminalView : UserControl, IOutputSink
         public const string Title = "title";
         public const string Bell = "bell";
         public const string Notification = "notification";
+        public const string Cwd = "cwd";
         public const string Copy = "copy";
         public const string Paste = "paste";
         public const string Shortcut = "shortcut";
