@@ -236,20 +236,25 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
 
     /// <summary>
     /// session.json can be edited by hand and the directory ends up in a command line: no quote or control character,
-    /// a rooted path (Linux for WSL, fully qualified for Windows).
+    /// a rooted path (Linux for WSL, a fully qualified drive path for Windows). A network or device path
+    /// (<c>\\host\share</c>, <c>//host</c>, <c>\\?\</c>) is refused: starting a shell there makes Windows contact that host.
     /// </summary>
     internal static bool IsUsableDirectory(string? directory, ShellProfile profile)
     {
         if (string.IsNullOrWhiteSpace(directory) || !profile.HasStartingDirectory
-            || directory.Any(character => character == '"' || char.IsControl(character)))
+            || directory.Any(character => character == '"' || char.IsControl(character))
+            || (directory.Length >= 2 && directory[0] is '\\' or '/' && directory[1] is '\\' or '/'))
         {
             return false;
         }
 
         return profile.Kind is ShellKind.Wsl
             ? directory.StartsWith('/') || directory.StartsWith('~')
-            : Path.IsPathFullyQualified(directory);
+            : IsLocalDriveRoot(directory) && Path.IsPathFullyQualified(directory);
     }
+
+    private static bool IsLocalDriveRoot(string directory) =>
+        directory.Length >= 3 && char.IsAsciiLetter(directory[0]) && directory[1] == ':' && directory[2] is '\\' or '/';
 
     /// <summary>The pane is closed: its shell ends with it.</summary>
     internal void EndSession()

@@ -235,6 +235,14 @@ public sealed class SessionLayoutTests
     [InlineData("pwsh", "C:\\a\nb")]
     [InlineData("ubuntu", "no/leading/slash")]
     [InlineData("ubuntu", "/home/me\" --exec evil")]
+    [InlineData("pwsh", @"\\attacker\share")]
+    [InlineData("pwsh", "//attacker/share")]
+    [InlineData("pwsh", @"/\attacker\share")]
+    [InlineData("pwsh", @"\\?\C:\work")]
+    [InlineData("pwsh", @"\\.\pipe\x")]
+    [InlineData("ubuntu", @"\\attacker\share")]
+    [InlineData("ubuntu", "//attacker/share")]
+    [InlineData("ubuntu", @"/\attacker\share")]
     public void An_unusable_saved_directory_is_ignored(string profile, string directory)
     {
         var id = profile == "pwsh" ? PowerShell.Id : Ubuntu.Id;

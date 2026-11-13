@@ -47,4 +47,18 @@ public sealed class WorkingDirectoryReportTests
     {
         Assert.False(WorkingDirectoryReport.TryParse(data, out _));
     }
+
+    // A network path as the shell's starting directory makes Windows open an SMB connection (NTLM leak).
+    [Theory]
+    [InlineData(@"9;\\attacker\share")]
+    [InlineData(@"9;""\\attacker\share""")]
+    [InlineData(@"9;//attacker/share")]
+    [InlineData(@"9;\\?\C:\work")]
+    [InlineData("file:////attacker/share")]
+    [InlineData("file://host/%5C%5Cattacker/share")]
+    [InlineData("file://host/%5Cattacker/share")]
+    public void TryParse_refuses_network_and_device_paths(string data)
+    {
+        Assert.False(WorkingDirectoryReport.TryParse(data, out _));
+    }
 }
