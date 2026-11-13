@@ -11,6 +11,14 @@ public enum PanelSide
     Right,
 }
 
+/// <summary>Whether the tabs and panes of the last session are reopened at startup.</summary>
+public enum RestoreSession
+{
+    Never,
+    Ask,
+    Always,
+}
+
 /// <summary>User preferences, stored as JSON in %USERPROFILE%\.shelldeck.</summary>
 /// <param name="DefaultProfileName">Written by earlier versions: the name of the terminal opened at startup. Read until <see cref="DefaultProfileId"/> replaces it.</param>
 /// <param name="Window">Last size and position of the main window; null until the window has been closed once.</param>
@@ -21,6 +29,9 @@ public sealed record AppSettings(
 {
     /// <summary>Terminal opened at startup, by <see cref="ShellProfile.Id"/>; null means the first shell found.</summary>
     public string? DefaultProfileId { get; init; }
+
+    /// <summary>Reopen the tabs and panes of the last session at startup: "never", "ask" or "always".</summary>
+    public RestoreSession RestoreSession { get; init; } = RestoreSession.Always;
 
     /// <summary>Terminals added, hidden, reordered or given a starting directory in the launcher.</summary>
     public ProfileSettings Profiles { get; init; } = new();

@@ -149,8 +149,15 @@
 
     // Desktop notification sequences: OSC 9 (iTerm2; "9;..." is ConEmu's cwd report, not a message)
     // and OSC 777 ("notify;title;body", used by Ghostty).
+    // Working directory: OSC 7 ("file://host/path") and ConEmu's OSC 9;9 ("9;path"); the host parses and validates it.
+    // Other "<n>;..." payloads (e.g. "4;1;50" progress) are neither a notification nor a directory.
     term.parser.registerOscHandler(9, data => {
-      if (!/^\d+;/.test(data)) post({ type: 'notification', data });
+      if (data.startsWith('9;')) post({ type: 'cwd', data });
+      else if (!/^\d+;/.test(data)) post({ type: 'notification', data });
+      return true;
+    });
+    term.parser.registerOscHandler(7, data => {
+      post({ type: 'cwd', data });
       return true;
     });
     term.parser.registerOscHandler(777, data => {

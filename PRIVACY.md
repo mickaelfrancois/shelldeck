@@ -1,6 +1,6 @@
 # Politique de confidentialité de ShellDeck
 
-*Dernière mise à jour : 7 octobre 2026*
+*Dernière mise à jour : 12 novembre 2026*
 
 ShellDeck est un terminal pour Windows. Il ne collecte, ne transmet ni ne vend aucune donnée personnelle, et ne contient ni publicité, ni mesure d'audience, ni télémétrie.
 
@@ -9,6 +9,7 @@ ShellDeck est un terminal pour Windows. Il ne collecte, ne transmet ni ne vend a
 ShellDeck n'enregistre que ce qui lui sert à fonctionner, et uniquement sur votre ordinateur :
 
 - **Vos réglages**, dans `%USERPROFILE%\.shelldeck\settings.json` : côté du panneau, position de la fenêtre, terminal ouvert au démarrage, terminaux ajoutés, masqués ou réordonnés.
+- **Votre disposition d'onglets**, dans `%USERPROFILE%\.shelldeck\session.json`, pour la restaurer au démarrage : onglets, volets et leurs proportions, terminal de chaque volet, couleurs, répertoire courant de chaque volet (quand le shell le signale) et identifiant de la session Claude Code qui y tournait. Le réglage `restoreSession` à `never` désactive ce fichier : il n'est alors ni lu ni écrit.
 - **Un journal d'erreurs**, dans le dossier de données de l'application, si une erreur inattendue se produit. Il contient la date, le message technique de l'erreur et l'endroit du code de ShellDeck où elle s'est produite.
 - **Le cache du composant d'affichage** (Microsoft Edge WebView2), dans le même dossier.
 
@@ -16,7 +17,7 @@ Rien de tout cela n'est envoyé où que ce soit. Désinstaller la version du Mic
 
 ## Connexions réseau
 
-ShellDeck n'établit lui-même aucune connexion réseau. Les programmes que vous lancez dans ses onglets (PowerShell, WSL, le client OpenSSH de Windows…) se connectent là où vous le leur demandez, selon leurs propres règles. ShellDeck lit votre fichier `~/.ssh/config` pour lister vos connexions, sans le modifier ni le transmettre.
+ShellDeck n'établit lui-même aucune connexion réseau. Les programmes que vous lancez dans ses onglets (PowerShell, WSL, le client OpenSSH de Windows…) se connectent là où vous le leur demandez, selon leurs propres règles. ShellDeck lit votre fichier `~/.ssh/config` pour lister vos connexions, sans le modifier ni le transmettre. Pour reprendre une session Claude Code, il lit aussi le nom et les premières lignes des fichiers de session de `~/.claude/projects`, afin d'y trouver l'identifiant et le répertoire de la session ; il ne les modifie ni ne les transmet.
 
 Ouvrir un lien affiché dans le terminal le transmet à votre navigateur par défaut.
 
@@ -32,13 +33,13 @@ Pour toute question sur cette politique, utilisez les coordonnées de support in
 
 # ShellDeck privacy policy
 
-*Last updated: October 7, 2026*
+*Last updated: November 12, 2026*
 
 ShellDeck is a terminal for Windows. It does not collect, transmit or sell any personal data, and contains no advertising, analytics or telemetry.
 
-**Data stored on your computer only:** your settings (`%USERPROFILE%\.shelldeck\settings.json`), an error log written if an unexpected error occurs (date, technical message and where in ShellDeck's code it happened), and the cache of the display component (Microsoft Edge WebView2). None of it is sent anywhere.
+**Data stored on your computer only:** your settings (`%USERPROFILE%\.shelldeck\settings.json`), your tab layout (`%USERPROFILE%\.shelldeck\session.json`: tabs, panes, terminals, colors, each pane's current directory when the shell reports it, and the id of the Claude Code session running there; not read or written when `restoreSession` is `never`), an error log written if an unexpected error occurs (date, technical message and where in ShellDeck's code it happened), and the cache of the display component (Microsoft Edge WebView2). None of it is sent anywhere.
 
-**Network:** ShellDeck makes no network connection itself. The programs you start in its tabs (PowerShell, WSL, the Windows OpenSSH client…) connect where you tell them to. ShellDeck reads `~/.ssh/config` to list your connections, without changing or sending it. Opening a link shown in the terminal hands it to your default browser.
+**Network:** ShellDeck makes no network connection itself. The programs you start in its tabs (PowerShell, WSL, the Windows OpenSSH client…) connect where you tell them to. ShellDeck reads `~/.ssh/config` to list your connections, without changing or sending it. To resume a Claude Code session, it reads the names and first lines of the session files in `~/.claude/projects` to find the session id and directory, without changing or sending them. Opening a link shown in the terminal hands it to your default browser.
 
 **Third-party components:** the terminal display relies on Microsoft Edge WebView2, governed by the [Microsoft privacy statement](https://privacy.microsoft.com/privacystatement).
 

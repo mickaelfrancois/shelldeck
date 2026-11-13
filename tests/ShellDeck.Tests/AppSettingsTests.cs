@@ -29,6 +29,25 @@ public sealed class AppSettingsTests
     }
 
     [Fact]
+    public void A_file_without_restoreSession_restores_the_session()
+    {
+        Assert.Equal(RestoreSession.Always, AppSettings.Parse("""{ "panelSide": "left" }""").RestoreSession);
+        Assert.Equal(RestoreSession.Always, new AppSettings().RestoreSession);
+    }
+
+    [Theory]
+    [InlineData(RestoreSession.Never, "never")]
+    [InlineData(RestoreSession.Ask, "ask")]
+    [InlineData(RestoreSession.Always, "always")]
+    public void The_restoreSession_choice_is_written_in_camel_case_and_read_back(RestoreSession mode, string text)
+    {
+        var json = new AppSettings { RestoreSession = mode }.ToJson();
+
+        Assert.Contains($"\"restoreSession\": \"{text}\"", json);
+        Assert.Equal(mode, AppSettings.Parse(json).RestoreSession);
+    }
+
+    [Fact]
     public void A_file_from_a_previous_version_with_numbers_is_still_read()
     {
         Assert.Equal(PanelSide.Right, AppSettings.Parse("""{ "panelSide": 1 }""").PanelSide);
