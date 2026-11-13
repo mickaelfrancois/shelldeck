@@ -82,6 +82,15 @@ public static partial class WorkingDirectoryReport
             return false;
         }
 
-        return DriveRoot().IsMatch(path) || path.StartsWith('/') || path.StartsWith(@"\\", StringComparison.Ordinal);
+        // Two leading separators make a network or device path (\\host\share, //host, \\?\): starting a shell
+        // there makes Windows contact that host, so the terminal output must never be able to choose one.
+        if (path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1]))
+        {
+            return false;
+        }
+
+        return DriveRoot().IsMatch(path) || path.StartsWith('/');
     }
+
+    private static bool IsSeparator(char character) => character is '\\' or '/';
 }
