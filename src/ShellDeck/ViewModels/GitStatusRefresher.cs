@@ -99,10 +99,8 @@ public sealed class GitStatusRefresher
         }
         catch (Exception)
         {
-            // Unexpected: keep the refresher alive, the next request starts a new cycle.
-        }
-        finally
-        {
+            // Unexpected: keep the refresher alive, the next request starts a new cycle. Only this path releases the
+            // loop here: a normal exit already did it under the lock, and a request may have started a new loop since.
             lock (_gate)
             {
                 _running = false;
