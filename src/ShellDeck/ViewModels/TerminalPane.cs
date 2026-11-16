@@ -36,9 +36,13 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
             if (SetField(ref _workingDirectory, value))
             {
                 _owner.OnPaneLayoutChanged();
+                _owner.OnPaneGitRelevantChange(this);
             }
         }
     }
+
+    /// <summary>A command ended in the shell (OSC 133 D): the files or branch may have changed.</summary>
+    public void ReportCommandEnded() => _owner.OnPaneGitRelevantChange(this);
 
     /// <summary>The Claude Code conversation running in the pane, when known.</summary>
     public string? ClaudeSessionId

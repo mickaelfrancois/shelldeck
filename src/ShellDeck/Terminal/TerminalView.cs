@@ -247,6 +247,9 @@ public sealed class TerminalView : UserControl, IOutputSink
                 && TerminalPane.IsUsableDirectory(directory, Pane.Profile):
                 Pane.WorkingDirectory = directory;
                 break;
+            case MessageType.CommandEnd:
+                Pane.ReportCommandEnded();
+                break;
             case MessageType.Notification when !string.IsNullOrWhiteSpace(message.Data):
                 Pane.ReceiveNotification(message.Data);
                 break;
@@ -555,6 +558,7 @@ public sealed class TerminalView : UserControl, IOutputSink
         public const string Shortcut = "shortcut";
         public const string OpenLink = "open-link";
         public const string Focus = "focus";
+        public const string CommandEnd = "command-end";
     }
 }
 

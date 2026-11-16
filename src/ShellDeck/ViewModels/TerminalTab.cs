@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
+using ShellDeck.Git;
 using ShellDeck.Session;
 using ShellDeck.Shells;
 using ShellDeck.Terminal;
@@ -48,6 +49,7 @@ public sealed class TerminalTab : ObservableObject
     private IPaneNode _root;
     private TerminalPane _mainPane;
     private TerminalPane _activePane;
+    private GitStatus? _git;
 
     public TerminalTab(ShellProfile profile)
     {
@@ -131,6 +133,7 @@ public sealed class TerminalTab : ObservableObject
             if (SetField(ref _status, value))
             {
                 OnPropertyChanged(nameof(Subtitle));
+                OnPropertyChanged(nameof(ShownGit));
             }
         }
     }
@@ -150,11 +153,40 @@ public sealed class TerminalTab : ObservableObject
     public string Subtitle => Status switch
     {
         TerminalStatus.Attention => Notification ?? string.Empty,
-        TerminalStatus.Working => WorkingSubtitle,
         TerminalStatus.Exited => $"Processus terminé (code {_exitCode})",
+        _ when ShownGit is { } git => GitSubtitle.Format(git),
+        TerminalStatus.Working => WorkingSubtitle,
         _ when Profile.Kind is ShellKind.Ssh => $"SSH · {Profile.Location}",
         _ => $"{Profile.Name} · {Profile.Location}",
     };
+
+    /// <summary>The git state of the main pane's directory, while the tab is not asking for the user or ended; never for SSH.</summary>
+    public GitStatus? ShownGit =>
+        Status is TerminalStatus.Running or TerminalStatus.Working && Profile.Kind is not ShellKind.Ssh ? _git : null;
+
+    /// <summary>Sets the git state of the main pane's directory; null when it is not in a repository.</summary>
+    public void ApplyGitStatus(GitStatus? status)
+    {
+        if (EqualityComparer<GitStatus?>.Default.Equals(_git, status))
+        {
+            return;
+        }
+
+        _git = status;
+        OnPropertyChanged(nameof(Subtitle));
+        OnPropertyChanged(nameof(ShownGit));
+    }
+
+    /// <summary>Raised when the main pane's directory changed or a command ended there: the git state may be out of date.</summary>
+    public event EventHandler? GitRefreshRequested;
+
+    internal void OnPaneGitRelevantChange(TerminalPane pane)
+    {
+        if (pane == MainPane)
+        {
+            GitRefreshRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     /// <summary>
     /// True when closing the tab would interrupt something: Claude Code (even idle, its conversation would be lost)
@@ -535,6 +567,9 @@ public sealed class TerminalTab : ObservableObject
     private void PromoteToMain(TerminalPane pane)
     {
         MainPane = pane;
+        _git = null;
+        OnPropertyChanged(nameof(Subtitle));
+        OnPropertyChanged(nameof(ShownGit));
         _exitCode = pane.ExitCode;
         Notification = null;
         IsClaudeSession = false;
@@ -544,6 +579,8 @@ public sealed class TerminalTab : ObservableObject
         {
             Status = TerminalStatus.Exited;
         }
+
+        GitRefreshRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void Arrange() => _root.Arrange(WholeArea);

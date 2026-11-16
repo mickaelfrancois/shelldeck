@@ -424,8 +424,31 @@
 
                                 <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center">
                                     <TextBlock x:Name="TitleText" Text="{Binding Title}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
-                                    <TextBlock x:Name="SubtitleText" Text="{Binding Subtitle}" FontSize="11" Margin="0,1,0,0"
-                                               Foreground="{StaticResource MutedForegroundBrush}" TextTrimming="CharacterEllipsis" />
+                                    <Grid Margin="0,1,0,0">
+                                        <TextBlock x:Name="SubtitleText" Text="{Binding Subtitle}" FontSize="11"
+                                                   Foreground="{StaticResource MutedForegroundBrush}" TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding ShownGit, Converter={x:Static shelldeck:Converters.NullToVisibleElseHidden}}" />
+                                        <shelldeck:GitSubtitlePanel ClipToBounds="True" VerticalAlignment="Top"
+                                                                MaxHeight="{Binding ActualHeight, ElementName=SubtitleText}"
+                                                                DataContext="{Binding ShownGit}"
+                                                                Visibility="{Binding Converter={x:Static shelldeck:Converters.NotNullToVisible}}">
+                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Repo" Text="{Binding RepoName}" FontSize="11" TextWrapping="NoWrap"
+                                                       Foreground="{StaticResource MutedForegroundBrush}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Separator" Text=" ⎇ " FontSize="11" TextWrapping="NoWrap"
+                                                       Foreground="{StaticResource MutedForegroundBrush}" />
+                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Branch" Text="{Binding Branch}" FontSize="11" TextWrapping="NoWrap"
+                                                       Foreground="{StaticResource MutedForegroundBrush}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Marker" Text=" ●" FontSize="11" TextWrapping="NoWrap"
+                                                       Foreground="{StaticResource GitDirtyBrush}"
+                                                       Visibility="{Binding IsDirty, Converter={x:Static shelldeck:Converters.TrueToVisible}}" />
+                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Marker" Text="{Binding Ahead, StringFormat=' ↑{0}'}" FontSize="11" TextWrapping="NoWrap"
+                                                       Foreground="{StaticResource GitAheadBrush}"
+                                                       Visibility="{Binding Ahead, Converter={x:Static shelldeck:Converters.PositiveToVisible}}" />
+                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Marker" Text="{Binding Behind, StringFormat=' ↓{0}'}" FontSize="11" TextWrapping="NoWrap"
+                                                       Foreground="{StaticResource GitBehindBrush}"
+                                                       Visibility="{Binding Behind, Converter={x:Static shelldeck:Converters.PositiveToVisible}}" />
+                                        </shelldeck:GitSubtitlePanel>
+                                    </Grid>
                                 </StackPanel>
 
                                 <Grid Grid.Column="2" VerticalAlignment="Center">

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Data;
+using ShellDeck.Git;
 using ShellDeck.Session;
 using ShellDeck.Shells;
 
@@ -22,6 +23,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly ListCollectionView _sshConnections;
     private readonly Action<AppSettings> _saveSettings;
     private readonly IClaudeSessionLocator _claudeSessions;
+    private readonly GitStatusRefresher _gitRefresher;
+    private bool _isWindowActive;
     private AppSettings _settings;
     private LauncherProfiles _launcher = new([], [], []);
     private TerminalTab? _selectedTab;
@@ -34,9 +37,15 @@ public sealed class MainViewModel : ObservableObject
         IReadOnlyList<ShellProfile> sshConnections,
         AppSettings settings,
         Action<AppSettings> saveSettings,
-        IClaudeSessionLocator? claudeSessions = null)
+        IClaudeSessionLocator? claudeSessions = null,
+        IGitStatusProbe? gitProbe = null)
     {
         _claudeSessions = claudeSessions ?? TranscriptSessionLocator.ForCurrentUser();
+        _gitRefresher = new GitStatusRefresher(
+            gitProbe ?? new ProcessGitStatusProbe(),
+            () => IsWindowActive,
+            directory => GitRepository.FindRoot(directory, GitRepository.HasGitEntryOnDisk),
+            isOpen: tab => Tabs.Contains(tab));
         _settings = settings;
         _saveSettings = saveSettings;
         _discoveredShells = shells;
@@ -53,6 +62,25 @@ public sealed class MainViewModel : ObservableObject
 
     /// <summary>Raised when something session.json keeps changes: tabs opened, closed or moved, the selected tab, any tab's layout.</summary>
     public event EventHandler? LayoutChanged;
+
+    /// <summary>
+    /// False until the window says otherwise: git is never run for an inactive window. Becoming active catches up on what
+    /// was missed meanwhile.
+    /// </summary>
+    public bool IsWindowActive
+    {
+        get => _isWindowActive;
+        set
+        {
+            if (SetField(ref _isWindowActive, value) && value)
+            {
+                _gitRefresher.RequestOnActivation(Tabs);
+            }
+        }
+    }
+
+    /// <summary>Refreshes the git state of every tab (the periodic tick).</summary>
+    public void RefreshGit() => _gitRefresher.RequestAll(Tabs);
 
     /// <summary>The tab list, in the order the user arranged it.</summary>
     public ObservableCollection<TerminalTab> Tabs { get; } = [];
@@ -245,11 +273,23 @@ public sealed class MainViewModel : ObservableObject
         tab.Ended += (_, _) => Close(tab);
         tab.LayoutChanged += OnTabLayoutChanged;
         tab.ClaudeTurnEnded += OnClaudeTurnEnded;
+        tab.GitRefreshRequested += OnGitRefreshRequested;
         Tabs.Insert(index, tab);
         _terminals.Add(tab);
         SelectedTab = tab;
         FilterText = string.Empty;
+
+        // A restored tab already has its directory.
+        _gitRefresher.Request([tab]);
         return tab;
+    }
+
+    private void OnGitRefreshRequested(object? sender, EventArgs e)
+    {
+        if (sender is TerminalTab tab)
+        {
+            _gitRefresher.Request([tab]);
+        }
     }
 
     private void OnClaudeTurnEnded(object? sender, TerminalPane pane) => _ = ResolveClaudeSessionAsync(pane);
@@ -364,6 +404,7 @@ public sealed class MainViewModel : ObservableObject
         _terminals.Remove(tab);
         tab.LayoutChanged -= OnTabLayoutChanged;
         tab.ClaudeTurnEnded -= OnClaudeTurnEnded;
+        tab.GitRefreshRequested -= OnGitRefreshRequested;
         tab.EndSessions();
 
         if (wasSelected)

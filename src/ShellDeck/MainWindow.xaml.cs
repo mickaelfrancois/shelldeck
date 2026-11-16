@@ -26,6 +26,9 @@ public partial class MainWindow : Window
 
     private readonly DispatcherTimer _toastTimer;
 
+    // Re-reads the git state of the tabs: a commit made outside the terminal raises no event.
+    private readonly DispatcherTimer _gitTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+
     // Saves the layout once the changes calm down; null until the startup layout is in place (and in `never` mode).
     private static readonly TimeSpan LayoutSaveDelay = TimeSpan.FromMilliseconds(500);
     private readonly SessionStore _sessionStore = new();
@@ -65,7 +68,12 @@ public partial class MainWindow : Window
 
         // The toast is a separate window: it would not follow the main window, and would stay above other apps.
         LocationChanged += (_, _) => HideToast();
-        Deactivated += (_, _) => HideToast();
+        Deactivated += (_, _) =>
+        {
+            HideToast();
+            _viewModel.IsWindowActive = false;
+        };
+        Activated += (_, _) => _viewModel.IsWindowActive = true;
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
 
         _settingsReloadTimer.Tick += (_, _) =>
@@ -82,8 +90,10 @@ public partial class MainWindow : Window
             _settingsReloadTimer.Stop();
             _settingsReloadTimer.Start();
         }));
+        _gitTimer.Tick += (_, _) => _viewModel.RefreshGit();
         Closed += (_, _) =>
         {
+            _gitTimer.Stop();
             _settingsWatcher.Dispose();
             _viewModel.EndAllSessions();
         };
@@ -121,6 +131,8 @@ public partial class MainWindow : Window
             tick => new DispatcherDebounceTimer(LayoutSaveDelay, tick));
         _viewModel.LayoutChanged += (_, _) => _layoutSaver.Request();
         _layoutSaver.Request();
+
+        _gitTimer.Start();
     }
 
     private sealed class DispatcherDebounceTimer : IDebounceTimer

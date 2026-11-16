@@ -71,6 +71,19 @@ public sealed class TerminalPageTests
     }
 
     [Fact]
+    public void The_page_reports_osc_133_command_end()
+    {
+        string html = File.ReadAllText(Path.Combine(FindWwwroot(), "terminal.html"));
+
+        int handler = html.IndexOf("registerOscHandler(133", StringComparison.Ordinal);
+        int report = html.IndexOf("type: 'command-end'", StringComparison.Ordinal);
+        int orphan = html.IndexOf("orphan mark", StringComparison.Ordinal);
+
+        Assert.True(handler >= 0 && report > handler, "command-end is not posted from the 133 handler");
+        Assert.True(report < orphan, "command-end must be posted before the orphan-mark return");
+    }
+
+    [Fact]
     public void The_page_reports_the_working_directory_from_osc_7_and_osc_9_9()
     {
         string html = File.ReadAllText(Path.Combine(FindWwwroot(), "terminal.html"));
