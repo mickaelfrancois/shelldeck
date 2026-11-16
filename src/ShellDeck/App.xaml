@@ -18,6 +18,9 @@
         <SolidColorBrush x:Key="ErrorBrush" Color="#E5534B" />
         <SolidColorBrush x:Key="CurrentTabBrush" Color="#3FB950" />
         <SolidColorBrush x:Key="ClaudeBrush" Color="#D97757" />
+        <SolidColorBrush x:Key="GitDirtyBrush" Color="#8B8D99" />
+        <SolidColorBrush x:Key="GitAheadBrush" Color="#6EA8FE" />
+        <SolidColorBrush x:Key="GitBehindBrush" Color="#F0883E" />
         <FontFamily x:Key="UiFont">Segoe UI</FontFamily>
         <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
 

@@ -14,6 +14,13 @@ public static class Converters
 
     public static IValueConverter PositiveToVisible { get; } = new VisibilityConverter(value => value is > 0);
 
+    public static IValueConverter NotNullToVisible { get; } = new VisibilityConverter(value => value is not null);
+
+    public static IValueConverter NullToVisible { get; } = new VisibilityConverter(value => value is null);
+
+    /// <summary>Hidden (not collapsed) when the value is not null: the element keeps its space, so it still sizes its cell.</summary>
+    public static IValueConverter NullToVisibleElseHidden { get; } = new VisibilityConverter(value => value is null, Visibility.Hidden);
+
     public static IValueConverter ZeroToVisible { get; } = new VisibilityConverter(value => value is 0);
 
     /// <summary>Visible when all bound values are equal, e.g. an item's name and the selected name.</summary>
@@ -49,10 +56,10 @@ public static class Converters
         public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
     }
 
-    private sealed class VisibilityConverter(Func<object?, bool> isVisible) : IValueConverter
+    private sealed class VisibilityConverter(Func<object?, bool> isVisible, Visibility otherwise = Visibility.Collapsed) : IValueConverter
     {
         public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-            isVisible(value) ? Visibility.Visible : Visibility.Collapsed;
+            isVisible(value) ? Visibility.Visible : otherwise;
 
         public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
             throw new NotSupportedException();

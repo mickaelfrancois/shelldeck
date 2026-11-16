@@ -191,6 +191,7 @@
       if (term.buffer.active.type !== 'normal') return true;
       const mark = parseOsc133(data);
       if (!mark) return true;
+      if (mark.letter === 'D') post({ type: 'command-end' }); // git status refresh; replayed marks cost at most one deduplicated refresh
       if (mark.letter === 'A') {
         livePromptLines();
         const prompt = term.registerMarker(0);
