@@ -4,6 +4,7 @@ using System.Windows.Data;
 using ShellDeck.Git;
 using ShellDeck.Session;
 using ShellDeck.Shells;
+using ShellDeck.TabLines;
 
 namespace ShellDeck.ViewModels;
 
@@ -19,6 +20,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly ObservableCollection<ShellProfile> _shellItems = [];
     private readonly ObservableCollection<ShellProfile> _sshItems = [];
     private readonly ObservableCollection<TerminalTab> _terminals = [];
+    private IReadOnlyList<TabLineTemplate> _lineTemplates;
     private readonly ListCollectionView _shells;
     private readonly ListCollectionView _sshConnections;
     private readonly Action<AppSettings> _saveSettings;
@@ -47,6 +49,7 @@ public sealed class MainViewModel : ObservableObject
             directory => GitRepository.FindRoot(directory, GitRepository.HasGitEntryOnDisk),
             isOpen: tab => Tabs.Contains(tab));
         _settings = settings;
+        _lineTemplates = TabLineTemplates.From(settings.TabLines);
         _saveSettings = saveSettings;
         _discoveredShells = shells;
         _discoveredSshConnections = sshConnections;
@@ -280,6 +283,7 @@ public sealed class MainViewModel : ObservableObject
 
     private TerminalTab Add(TerminalTab tab, int index)
     {
+        tab.SetLineTemplates(_lineTemplates);
         tab.AttentionRequested += (_, _) => AttentionRequested?.Invoke(this, tab);
         tab.Ended += (_, _) => Close(tab);
         tab.LayoutChanged += OnTabLayoutChanged;
@@ -516,6 +520,15 @@ public sealed class MainViewModel : ObservableObject
         if (settings.Profiles != previous.Profiles)
         {
             ArrangeProfiles();
+        }
+
+        if (!(settings.TabLines ?? []).SequenceEqual(previous.TabLines ?? []))
+        {
+            _lineTemplates = TabLineTemplates.From(settings.TabLines);
+            foreach (var tab in _terminals)
+            {
+                tab.SetLineTemplates(_lineTemplates);
+            }
         }
 
         OnPropertyChanged(nameof(DefaultProfile));

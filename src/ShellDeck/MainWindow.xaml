@@ -4,6 +4,7 @@
         xmlns:shelldeck="clr-namespace:ShellDeck"
         xmlns:terminal="clr-namespace:ShellDeck.Terminal"
         xmlns:viewModels="clr-namespace:ShellDeck.ViewModels"
+        xmlns:tabLines="clr-namespace:ShellDeck.TabLines"
         Title="{Binding SelectedTab.Title, StringFormat={}{0} — ShellDeck, FallbackValue=ShellDeck, TargetNullValue=ShellDeck}"
         Icon="/Assets/shelldeck.ico"
         Width="1200" Height="750"
@@ -429,34 +430,55 @@
                                     </Border>
                                 </Grid>
 
-                                <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TitleText" Text="{Binding Title}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
-                                    <Grid Margin="0,1,0,0">
-                                        <TextBlock x:Name="SubtitleText" Text="{Binding Subtitle}" FontSize="11"
-                                                   Foreground="{StaticResource MutedForegroundBrush}" TextTrimming="CharacterEllipsis"
-                                                   Visibility="{Binding ShownGit, Converter={x:Static shelldeck:Converters.NullToVisibleElseHidden}}" />
-                                        <shelldeck:GitSubtitlePanel ClipToBounds="True" VerticalAlignment="Top"
-                                                                MaxHeight="{Binding ActualHeight, ElementName=SubtitleText}"
-                                                                DataContext="{Binding ShownGit}"
-                                                                Visibility="{Binding Converter={x:Static shelldeck:Converters.NotNullToVisible}}">
-                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Repo" Text="{Binding RepoName}" FontSize="11" TextWrapping="NoWrap"
-                                                       Foreground="{StaticResource MutedForegroundBrush}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Separator" Text=" ⎇ " FontSize="11" TextWrapping="NoWrap"
-                                                       Foreground="{StaticResource MutedForegroundBrush}" />
-                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Branch" Text="{Binding Branch}" FontSize="11" TextWrapping="NoWrap"
-                                                       Foreground="{StaticResource MutedForegroundBrush}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Marker" Text=" ●" FontSize="11" TextWrapping="NoWrap"
-                                                       Foreground="{StaticResource GitDirtyBrush}"
-                                                       Visibility="{Binding IsDirty, Converter={x:Static shelldeck:Converters.TrueToVisible}}" />
-                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Marker" Text="{Binding Ahead, StringFormat=' ↑{0}'}" FontSize="11" TextWrapping="NoWrap"
-                                                       Foreground="{StaticResource GitAheadBrush}"
-                                                       Visibility="{Binding Ahead, Converter={x:Static shelldeck:Converters.PositiveToVisible}}" />
-                                            <TextBlock shelldeck:GitSubtitlePanel.Role="Marker" Text="{Binding Behind, StringFormat=' ↓{0}'}" FontSize="11" TextWrapping="NoWrap"
-                                                       Foreground="{StaticResource GitBehindBrush}"
-                                                       Visibility="{Binding Behind, Converter={x:Static shelldeck:Converters.PositiveToVisible}}" />
-                                        </shelldeck:GitSubtitlePanel>
-                                    </Grid>
-                                </StackPanel>
+                                <!-- Three lines of a fixed height, so every tab is as tall as the next one, empty lines included. -->
+                                <ItemsControl Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Focusable="False"
+                                              ItemsSource="{Binding Lines}" ToolTip="{Binding Title}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type tabLines:TabLine}">
+                                            <ItemsControl x:Name="Line" Height="16" FontSize="11" ClipToBounds="True" Focusable="False"
+                                                          ItemsSource="{Binding Segments}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <shelldeck:TabLinePanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type tabLines:TabSegment}">
+                                                        <TextBlock x:Name="Segment" Text="{Binding Text}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{StaticResource MutedForegroundBrush}" />
+                                                        <DataTemplate.Triggers>
+                                                            <DataTrigger Binding="{Binding Style}" Value="{x:Static tabLines:SegmentStyle.Normal}">
+                                                                <Setter TargetName="Segment" Property="Foreground" Value="{StaticResource ForegroundBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Style}" Value="{x:Static tabLines:SegmentStyle.Strong}">
+                                                                <Setter TargetName="Segment" Property="Foreground" Value="{StaticResource ForegroundBrush}" />
+                                                                <Setter TargetName="Segment" Property="FontWeight" Value="SemiBold" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Style}" Value="{x:Static tabLines:SegmentStyle.GitDirty}">
+                                                                <Setter TargetName="Segment" Property="Foreground" Value="{StaticResource GitDirtyBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Style}" Value="{x:Static tabLines:SegmentStyle.GitAhead}">
+                                                                <Setter TargetName="Segment" Property="Foreground" Value="{StaticResource GitAheadBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Style}" Value="{x:Static tabLines:SegmentStyle.GitBehind}">
+                                                                <Setter TargetName="Segment" Property="Foreground" Value="{StaticResource GitBehindBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Style}" Value="{x:Static tabLines:SegmentStyle.Attention}">
+                                                                <Setter TargetName="Segment" Property="Foreground" Value="{StaticResource AttentionBrush}" />
+                                                            </DataTrigger>
+                                                        </DataTemplate.Triggers>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsPrimary}" Value="True">
+                                                    <Setter TargetName="Line" Property="Height" Value="18" />
+                                                    <Setter TargetName="Line" Property="FontSize" Value="13" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
                                 <Grid Grid.Column="2" VerticalAlignment="Center">
                                     <Ellipse x:Name="AttentionBadge" Width="8" Height="8" Fill="{StaticResource AttentionBrush}" Visibility="Collapsed" />
@@ -476,7 +498,6 @@
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Status}" Value="{x:Static viewModels:TerminalStatus.Attention}">
                                     <Setter TargetName="AttentionBadge" Property="Visibility" Value="Visible" />
-                                    <Setter TargetName="SubtitleText" Property="Foreground" Value="{StaticResource AttentionBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Status}" Value="{x:Static viewModels:TerminalStatus.Working}">
                                     <Setter TargetName="Spinner" Property="Visibility" Value="Visible" />
@@ -491,10 +512,6 @@
                                     <DataTrigger.ExitActions>
                                         <StopStoryboard BeginStoryboardName="SpinnerRotation" />
                                     </DataTrigger.ExitActions>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="{x:Static viewModels:TerminalStatus.Exited}">
-                                    <Setter TargetName="TitleText" Property="FontStyle" Value="Italic" />
-                                    <Setter TargetName="TitleText" Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
                                 </DataTrigger>
                                 <!-- On hover the close button takes the place of the state indicator. -->
                                 <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
