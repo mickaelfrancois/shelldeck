@@ -260,11 +260,18 @@ public sealed class TerminalTab : ObservableObject
 
     /// <summary>
     /// Splits the active pane; the new pane runs <paramref name="profile"/> (the active pane's own profile when null)
-    /// and takes the keyboard. The tab header keeps following the main pane.
+    /// and takes the keyboard, starting in the directory the active pane reported when that profile can use it.
+    /// The tab header keeps following the main pane.
     /// </summary>
     public void Split(SplitDirection direction, ShellProfile? profile = null)
     {
-        var pane = AddSplit(ActivePane, direction, profile ?? ActivePane.Profile, out _);
+        var source = ActivePane;
+        var pane = AddSplit(source, direction, profile ?? source.Profile, out _);
+        if (TerminalPane.IsUsableDirectory(source.WorkingDirectory, pane.Profile))
+        {
+            pane.RestoredDirectory = source.WorkingDirectory;
+        }
+
         ActivateCore(pane);
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }

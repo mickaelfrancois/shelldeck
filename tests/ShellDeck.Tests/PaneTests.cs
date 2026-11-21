@@ -52,6 +52,40 @@ public sealed class PaneTests
     }
 
     [Fact]
+    public void Splitting_starts_the_new_pane_in_the_directory_of_the_active_pane()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+        tab.MainPane.WorkingDirectory = "/home/me/proj";
+
+        tab.Split(SplitDirection.Right);
+
+        Assert.Equal("/home/me/proj", tab.ActivePane.RestoredDirectory);
+    }
+
+    [Fact]
+    public void Splitting_with_a_profile_that_cannot_use_the_directory_starts_in_its_own()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+        tab.MainPane.WorkingDirectory = "/home/me/proj";
+
+        tab.Split(SplitDirection.Right, PowerShell);
+        var powerShellPane = tab.ActivePane;
+        tab.Split(SplitDirection.Down, Docker01);
+
+        Assert.Equal((null, null), (powerShellPane.RestoredDirectory, tab.ActivePane.RestoredDirectory));
+    }
+
+    [Fact]
+    public void Splitting_a_pane_with_no_reported_directory_starts_in_the_profile_directory()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+
+        tab.Split(SplitDirection.Right);
+
+        Assert.Null(tab.ActivePane.RestoredDirectory);
+    }
+
+    [Fact]
     public void Splitting_with_another_profile_keeps_the_tab_header_of_the_main_pane()
     {
         var tab = new TerminalTab(Ubuntu) { IsSelected = true };
