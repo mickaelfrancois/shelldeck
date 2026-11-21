@@ -153,6 +153,7 @@
             <DockPanel>
                 <!-- Footer: application-level actions (keyboard reference, settings). -->
                 <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="8,6">
+                    <Grid>
                     <StackPanel Orientation="Horizontal">
                         <!-- Not clickable while open: the click that closes the popup would otherwise reopen it. -->
                         <ToggleButton x:Name="ShortcutHelpButton" Style="{StaticResource IconButtonStyle}" Width="26" Height="26"
@@ -165,6 +166,9 @@
                                 ToolTip="Paramètres (settings.json)" AutomationProperties.Name="Paramètres"
                                 Click="OnSettingsClicked" />
                     </StackPanel>
+                    <TextBlock Text="{x:Static shelldeck:AppVersion.Current}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               FontSize="11" Opacity="0.6" ToolTip="Version de ShellDeck" />
+                    </Grid>
                 </Border>
 
                 <Popup x:Name="ShortcutHelpPopup" PlacementTarget="{Binding ElementName=ShortcutHelpButton}" Placement="Top"
