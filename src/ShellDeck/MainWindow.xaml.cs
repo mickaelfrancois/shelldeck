@@ -18,11 +18,17 @@ public partial class MainWindow : Window
     private const double ToastMargin = 12;
     private static readonly TimeSpan ToastDuration = TimeSpan.FromSeconds(8);
 
-    private readonly MainViewModel _viewModel = new(
-        ShellDiscovery.DiscoverShells(),
-        ShellDiscovery.DiscoverSshConnections(),
-        AppSettings.Load(),
-        settings => settings.Save());
+    private readonly MainViewModel _viewModel = CreateViewModel();
+
+    private static MainViewModel CreateViewModel()
+    {
+        var settings = AppSettings.Load(out var error);
+        return new MainViewModel(
+            ShellDiscovery.DiscoverShells(),
+            ShellDiscovery.DiscoverSshConnections(),
+            settings,
+            saved => saved.Save()) { SettingsError = error };
+    }
 
     private readonly DispatcherTimer _toastTimer;
 
@@ -79,11 +85,13 @@ public partial class MainWindow : Window
         _settingsReloadTimer.Tick += (_, _) =>
         {
             _settingsReloadTimer.Stop();
-            // A file that does not parse yet (half-typed edit) keeps the current settings.
-            if (AppSettings.TryLoad(out var settings))
+            // A file that does not parse yet (half-typed edit) keeps the current settings, and says why.
+            if (AppSettings.TryLoad(out var settings, out var error))
             {
                 _viewModel.ReloadSettings(settings);
             }
+
+            _viewModel.SettingsError = error;
         };
         _settingsWatcher = AppSettings.Watch(() => Dispatcher.BeginInvoke(() =>
         {

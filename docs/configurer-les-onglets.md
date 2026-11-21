@@ -8,7 +8,7 @@ Ce guide dit comment changer ce que montrent les trois lignes d'un onglet, avec 
 - Depuis WSL : `/mnt/c/Users/<nom>/.shelldeck/settings.json`.
 - Le bouton engrenage du pied de la liste des sessions crée le fichier s'il manque et l'ouvre dans un éditeur.
 
-Le fichier est **rechargé à chaud** (environ 300 ms après l'enregistrement) : aucun redémarrage. Une clé inconnue est ignorée. ShellDeck réécrit lui-même ce fichier quand on change un réglage dans l'interface (profil par défaut, ordre du lanceur…) et ne garde alors que les clés qu'il connaît : n'y mettez rien d'autre.
+Le fichier est **rechargé à chaud** (environ 300 ms après l'enregistrement) : aucun redémarrage. Une clé inconnue est ignorée, une clé du mauvais type rend le fichier invalide (voir plus bas). ShellDeck réécrit lui-même ce fichier quand on change un réglage dans l'interface (profil par défaut, ordre du lanceur…) et ne garde alors que les clés qu'il connaît : n'y mettez rien d'autre.
 
 Un schéma JSON, [`settings.schema.json`](settings.schema.json), décrit toutes les clés. Dans VS Code, `settings.json` du poste :
 
@@ -33,7 +33,7 @@ Règles à connaître :
 - une ligne dont **tous** les champs sont vides est vide : `⎇ {git.branch}` n'affiche rien hors d'un repo ;
 - les marqueurs git portent leur espace de tête (` ●`, ` ↑2`) : écrivez `{git.branch}{git.dirty}`, sans espace entre.
 
-**Vérifier :** enregistrer le fichier, regarder la liste des sessions. Rien n'a changé ? Le JSON est probablement invalide (virgule en trop) : ShellDeck ignore alors tout le fichier.
+**Vérifier :** enregistrer le fichier, regarder la liste des sessions. Si le fichier n'est pas du JSON valide (virgule en trop, mauvais type), un bandeau apparaît en haut de la liste avec la ligne, la colonne et la clé fautives, et un bouton **Ouvrir** ; les réglages précédents restent en vigueur jusqu'à ce que le fichier soit corrigé, puis le bandeau disparaît. Un fichier invalide est aussi copié dans `settings.json.invalid`, pour que ShellDeck ne puisse pas écraser ce que vous étiez en train d'écrire.
 
 ## 3. Ajouter des champs avec une commande : `tabCommand`
 

@@ -191,3 +191,69 @@ public sealed class TabCommandWiringTests
         Assert.Contains("1 champ(s)", viewModel.DescribeTabCommand(tab));
     }
 }
+
+public sealed class SettingsErrorTests
+{
+    [Fact]
+    public void A_file_that_parses_has_no_error()
+    {
+        Assert.Equal((true, null), (AppSettings.TryParse("""{ "tabLines": ["{title}"] }""", out _, out var error), error));
+    }
+
+    [Fact]
+    public void A_syntax_error_says_the_line_and_the_column()
+    {
+        var parsed = AppSettings.TryParse("{\n  \"tabLines\": [\"{title}\",]\n  \"x\": 1\n}", out var settings, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("settings.json est invalide (ligne ", error);
+        Assert.Contains("colonne", error);
+        Assert.Equal(new AppSettings(), settings);
+    }
+
+    [Fact]
+    public void A_wrong_type_names_the_key()
+    {
+        var parsed = AppSettings.TryParse("""{ "tabLines": "{title}" }""", out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("clé tabLines", error);
+    }
+
+    [Fact]
+    public void A_wrong_value_for_a_choice_names_the_key()
+    {
+        Assert.False(AppSettings.TryParse("""{ "restoreSession": "sometimes" }""", out _, out var error));
+        Assert.Contains("restoreSession", error);
+    }
+
+    [Fact]
+    public void A_file_with_no_content_is_an_error_not_a_crash()
+    {
+        Assert.False(AppSettings.TryParse("", out _, out var error));
+        Assert.StartsWith("settings.json est invalide", error);
+    }
+
+    [Fact]
+    public void The_error_is_one_line_without_the_serializer_path_noise()
+    {
+        AppSettings.TryParse("""{ "tabLines": 3 }""", out _, out var error);
+
+        Assert.DoesNotContain("Path:", error);
+        Assert.DoesNotContain('\n', error!);
+    }
+
+    [Fact]
+    public void The_view_model_raises_a_change_when_the_error_appears_and_goes()
+    {
+        var viewModel = new MainViewModel([], [], new AppSettings(), _ => { });
+        var raised = new List<string?>();
+        viewModel.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        viewModel.SettingsError = "oops";
+        viewModel.SettingsError = "oops";
+        viewModel.SettingsError = null;
+
+        Assert.Equal([nameof(MainViewModel.SettingsError), nameof(MainViewModel.SettingsError)], raised);
+    }
+}

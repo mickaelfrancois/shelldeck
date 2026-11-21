@@ -28,6 +28,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly GitStatusRefresher _gitRefresher;
     private readonly TabFieldsRefresher _fieldsRefresher;
     private bool _isWindowActive;
+    private string? _settingsError;
     private AppSettings _settings;
     private LauncherProfiles _launcher = new([], [], []);
     private TerminalTab? _selectedTab;
@@ -50,12 +51,12 @@ public sealed class MainViewModel : ObservableObject
             () => IsWindowActive,
             directory => GitRepository.FindRoot(directory, GitRepository.HasGitEntryOnDisk),
             isOpen: tab => Tabs.Contains(tab));
+        _settings = settings;
         _fieldsRefresher = new TabFieldsRefresher(
             tabCommandRunner ?? new ProcessTabCommandRunner(),
             () => _settings.TabCommand,
             () => IsWindowActive,
             isOpen: tab => Tabs.Contains(tab));
-        _settings = settings;
         _lineTemplates = TabLineTemplates.From(settings.TabLines);
         _saveSettings = saveSettings;
         _discoveredShells = shells;
@@ -230,6 +231,16 @@ public sealed class MainViewModel : ObservableObject
     public string? DefaultProfileId => DefaultProfile?.Id;
 
     private bool IsFiltering => FilterText.Trim().Length > 0;
+
+    /// <summary>
+    /// Why the last read of settings.json failed, shown in the window; null when it is fine. While it is set, the settings
+    /// the app started or last reloaded with stay in force.
+    /// </summary>
+    public string? SettingsError
+    {
+        get => _settingsError;
+        set => SetField(ref _settingsError, value);
+    }
 
     public RestoreSession RestoreSession => _settings.RestoreSession;
 
