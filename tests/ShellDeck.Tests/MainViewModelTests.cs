@@ -51,6 +51,38 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Opening_with_a_template_opens_one_tab_with_its_panes()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+
+        viewModel.Open(Ubuntu, PaneTemplate.Grid);
+
+        Assert.Equal((1, 4), (viewModel.Tabs.Count, viewModel.Tabs.Single().Panes.Count));
+    }
+
+    [Fact]
+    public void The_default_profile_opens_with_the_default_template()
+    {
+        var saved = new List<AppSettings>();
+        var viewModel = CreateViewModel(new AppSettings(), saved.Add);
+
+        viewModel.SetDefaultTemplate(PaneTemplate.Columns);
+        viewModel.OpenDefault();
+
+        Assert.Equal((PaneTemplate.Columns, 2), (saved.Last().DefaultTemplate, viewModel.Tabs.Single().Panes.Count));
+    }
+
+    [Fact]
+    public void Without_a_chosen_template_the_default_profile_opens_a_single_pane()
+    {
+        var viewModel = CreateViewModel(new AppSettings());
+
+        viewModel.OpenDefault();
+
+        Assert.Single(viewModel.Tabs.Single().Panes);
+    }
+
+    [Fact]
     public void Without_a_chosen_default_the_first_shell_opens_at_startup()
     {
         var viewModel = CreateViewModel(new AppSettings());

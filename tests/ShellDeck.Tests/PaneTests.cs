@@ -85,6 +85,45 @@ public sealed class PaneTests
         Assert.Null(tab.ActivePane.RestoredDirectory);
     }
 
+    [Theory]
+    [InlineData(PaneTemplate.Single, 1, 0)]
+    [InlineData(PaneTemplate.Columns, 2, 1)]
+    [InlineData(PaneTemplate.Rows, 2, 1)]
+    [InlineData(PaneTemplate.MainAndSide, 3, 2)]
+    [InlineData(PaneTemplate.Grid, 4, 3)]
+    public void A_template_lays_the_tab_out_in_the_expected_number_of_panes(PaneTemplate template, int panes, int splits)
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+
+        tab.ApplyTemplate(template);
+
+        Assert.Equal((panes, splits, tab.MainPane), (tab.Panes.Count, tab.Splits.Count, tab.ActivePane));
+    }
+
+    [Fact]
+    public void A_grid_template_makes_two_columns_of_two_rows()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+
+        tab.ApplyTemplate(PaneTemplate.Grid);
+
+        var bounds = tab.Panes.Select(pane => pane.Bounds).ToArray();
+        Assert.Equal(
+            [(0.0, 0.0), (0.5, 0.0), (0.0, 0.5), (0.5, 0.5)],
+            bounds.Select(area => (area.X, area.Y)).OrderBy(point => point.Y).ThenBy(point => point.X).ToArray());
+        Assert.All(bounds, area => Assert.Equal((0.5, 0.5), (area.Width, area.Height)));
+    }
+
+    [Fact]
+    public void A_main_and_side_template_gives_the_left_half_to_the_main_pane()
+    {
+        var tab = new TerminalTab(Ubuntu) { IsSelected = true };
+
+        tab.ApplyTemplate(PaneTemplate.MainAndSide);
+
+        Assert.Equal((0.0, 0.0, 0.5, 1.0), (tab.MainPane.Bounds.X, tab.MainPane.Bounds.Y, tab.MainPane.Bounds.Width, tab.MainPane.Bounds.Height));
+    }
+
     [Fact]
     public void Splitting_with_another_profile_keeps_the_tab_header_of_the_main_pane()
     {

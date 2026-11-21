@@ -222,6 +222,14 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(DefaultProfileId));
     }
 
+    public PaneTemplate DefaultTemplate => _settings.DefaultTemplate;
+
+    public void SetDefaultTemplate(PaneTemplate template)
+    {
+        UpdateSettings(_settings with { DefaultTemplate = template });
+        OnPropertyChanged(nameof(DefaultTemplate));
+    }
+
     public void HideProfile(ShellProfile profile) => UpdateProfiles(_settings.Profiles.Hide(profile.Id));
 
     public void ShowProfile(ShellProfile profile) => UpdateProfiles(_settings.Profiles.Show(profile.Id));
@@ -250,6 +258,9 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public void Open(ShellProfile profile) => Open(profile, Tabs.Count);
+
+    /// <summary>A new tab laid out as <paramref name="template"/>.</summary>
+    public void Open(ShellProfile profile, PaneTemplate template) => Open(profile, Tabs.Count).ApplyTemplate(template);
 
     /// <summary>A new tab right after <paramref name="tab"/>, with its profile and color, as Windows Terminal's "Duplicate tab".</summary>
     public void Duplicate(TerminalTab tab) =>
@@ -375,7 +386,7 @@ public sealed class MainViewModel : ObservableObject
     {
         if (DefaultProfile is { } defaultProfile)
         {
-            Open(defaultProfile);
+            Open(defaultProfile, _settings.DefaultTemplate);
         }
     }
 

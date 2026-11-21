@@ -276,6 +276,23 @@ public sealed class TerminalTab : ObservableObject
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Lays a freshly opened tab out as <paramref name="template"/>, every pane running the tab's profile. The main pane
+    /// keeps the keyboard.
+    /// </summary>
+    public void ApplyTemplate(PaneTemplate template)
+    {
+        foreach (var (target, direction) in template.Steps())
+        {
+            AddSplit(Panes[target], direction, Profile, out _);
+        }
+
+        if (Panes.Count > 1)
+        {
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     /// <summary>Splits <paramref name="target"/>: the new pane takes the second place. Neither is activated, nothing is raised.</summary>
     private TerminalPane AddSplit(TerminalPane target, SplitDirection direction, ShellProfile profile, out PaneSplit split)
     {
