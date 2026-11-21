@@ -25,7 +25,7 @@ public static class TabFields
         "git.dirty" => tab.Git is { IsDirty: true } ? Text(" ●", SegmentStyle.GitDirty, 0) : None,
         "git.ahead" => tab.Git is { Ahead: > 0 } git ? Text($" ↑{git.Ahead}", SegmentStyle.GitAhead, 0) : None,
         "git.behind" => tab.Git is { Behind: > 0 } git ? Text($" ↓{git.Behind}", SegmentStyle.GitBehind, 0) : None,
-        _ => None,
+        var name => tab.Extra is not null && tab.Extra.TryGetValue(name, out var extra) ? [extra] : None,
     };
 
     /// <summary>

@@ -26,7 +26,9 @@ public sealed class MainViewModel : ObservableObject
     private readonly Action<AppSettings> _saveSettings;
     private readonly IClaudeSessionLocator _claudeSessions;
     private readonly GitStatusRefresher _gitRefresher;
+    private readonly TabFieldsRefresher _fieldsRefresher;
     private bool _isWindowActive;
+    private string? _settingsError;
     private AppSettings _settings;
     private LauncherProfiles _launcher = new([], [], []);
     private TerminalTab? _selectedTab;
@@ -40,7 +42,8 @@ public sealed class MainViewModel : ObservableObject
         AppSettings settings,
         Action<AppSettings> saveSettings,
         IClaudeSessionLocator? claudeSessions = null,
-        IGitStatusProbe? gitProbe = null)
+        IGitStatusProbe? gitProbe = null,
+        ITabCommandRunner? tabCommandRunner = null)
     {
         _claudeSessions = claudeSessions ?? TranscriptSessionLocator.ForCurrentUser();
         _gitRefresher = new GitStatusRefresher(
@@ -49,6 +52,11 @@ public sealed class MainViewModel : ObservableObject
             directory => GitRepository.FindRoot(directory, GitRepository.HasGitEntryOnDisk),
             isOpen: tab => Tabs.Contains(tab));
         _settings = settings;
+        _fieldsRefresher = new TabFieldsRefresher(
+            tabCommandRunner ?? new ProcessTabCommandRunner(),
+            () => _settings.TabCommand,
+            () => IsWindowActive,
+            isOpen: tab => Tabs.Contains(tab));
         _lineTemplates = TabLineTemplates.From(settings.TabLines);
         _saveSettings = saveSettings;
         _discoveredShells = shells;
@@ -78,12 +86,25 @@ public sealed class MainViewModel : ObservableObject
             if (SetField(ref _isWindowActive, value) && value)
             {
                 _gitRefresher.RequestOnActivation(Tabs);
+                _fieldsRefresher.Request(Tabs);
             }
         }
     }
 
+    /// <summary>The report of the last run of the tab command for <paramref name="tab"/>, or why there is none.</summary>
+    public string DescribeTabCommand(TerminalTab tab) => (_settings.TabCommand, tab.CommandDiagnostic) switch
+    {
+        (null or { Length: 0 }, _) => "Aucune commande configurée. Ajoutez `tabCommand` dans settings.json (voir le README).",
+        (_, null) => "La commande n'a pas encore été lancée pour cet onglet. Elle l'est quand la fenêtre est active : changement de dossier, fin de commande, toutes les 30 s.",
+        (_, { } diagnostic) => diagnostic.ToText(),
+    };
+
     /// <summary>Refreshes the git state of every tab (the periodic tick).</summary>
-    public void RefreshGit() => _gitRefresher.RequestAll(Tabs);
+    public void RefreshGit()
+    {
+        _gitRefresher.RequestAll(Tabs);
+        _fieldsRefresher.Request(Tabs);
+    }
 
     /// <summary>The tab list, in the order the user arranged it.</summary>
     public ObservableCollection<TerminalTab> Tabs { get; } = [];
@@ -211,6 +232,16 @@ public sealed class MainViewModel : ObservableObject
 
     private bool IsFiltering => FilterText.Trim().Length > 0;
 
+    /// <summary>
+    /// Why the last read of settings.json failed, shown in the window; null when it is fine. While it is set, the settings
+    /// the app started or last reloaded with stay in force.
+    /// </summary>
+    public string? SettingsError
+    {
+        get => _settingsError;
+        set => SetField(ref _settingsError, value);
+    }
+
     public RestoreSession RestoreSession => _settings.RestoreSession;
 
     public WindowPlacement? WindowPlacement => _settings.Window;
@@ -296,6 +327,7 @@ public sealed class MainViewModel : ObservableObject
 
         // A restored tab already has its directory.
         _gitRefresher.Request([tab]);
+        _fieldsRefresher.Request([tab]);
         return tab;
     }
 
@@ -304,10 +336,20 @@ public sealed class MainViewModel : ObservableObject
         if (sender is TerminalTab tab)
         {
             _gitRefresher.Request([tab]);
+            _fieldsRefresher.Request([tab]);
         }
     }
 
-    private void OnClaudeTurnEnded(object? sender, TerminalPane pane) => _ = ResolveClaudeSessionAsync(pane);
+    private void OnClaudeTurnEnded(object? sender, TerminalPane pane)
+    {
+        // The conversation moved on: what a script reads from it (model, context) may have changed.
+        if (sender is TerminalTab tab)
+        {
+            _fieldsRefresher.Request([tab]);
+        }
+
+        _ = ResolveClaudeSessionAsync(pane);
+    }
 
     /// <summary>
     /// Finds which conversation the pane's Claude Code is on: the pane's known conversation while its transcript is still being written, else the transcript written since it was seen, that no other pane
@@ -520,6 +562,11 @@ public sealed class MainViewModel : ObservableObject
         if (settings.Profiles != previous.Profiles)
         {
             ArrangeProfiles();
+        }
+
+        if (!(settings.TabCommand ?? []).SequenceEqual(previous.TabCommand ?? []))
+        {
+            _fieldsRefresher.Request(Tabs);
         }
 
         if (!(settings.TabLines ?? []).SequenceEqual(previous.TabLines ?? []))

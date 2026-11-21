@@ -67,3 +67,193 @@ public sealed class TabLinesSettingsTests
         Assert.Equal("Ubuntu-26.04", TabText.Of(viewModel.Tabs.Single())[0]);
     }
 }
+
+public sealed class TabCommandSettingsTests
+{
+    [Fact]
+    public void The_command_is_a_program_and_its_arguments()
+    {
+        var settings = AppSettings.Parse("""{ "tabCommand": ["wsl.exe", "-d", "Ubuntu", "--exec", "/home/me/tab.sh"] }""");
+
+        Assert.Equal(["wsl.exe", "-d", "Ubuntu", "--exec", "/home/me/tab.sh"], settings.TabCommand!);
+    }
+
+    [Fact]
+    public void Without_a_command_nothing_is_written_back()
+    {
+        Assert.DoesNotContain("tabCommand", new AppSettings().ToJson());
+    }
+}
+
+public sealed class TabCommandWiringTests
+{
+    private static readonly ShellProfile Ubuntu = new("Ubuntu-26.04", "wsl.exe -d Ubuntu-26.04", ShellKind.Wsl, "~");
+
+    private sealed class Runner(string output) : ShellDeck.TabLines.ITabCommandRunner
+    {
+        public int Calls;
+
+        public Task<ShellDeck.TabLines.TabCommandRun> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation)
+        {
+            Interlocked.Increment(ref Calls);
+            return Task.FromResult(ShellDeck.TabLines.TabCommandRun.Succeeded(output));
+        }
+    }
+
+    private static async Task<bool> Eventually(Func<bool> condition)
+    {
+        for (var i = 0; i < 100 && !condition(); i++)
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        return condition();
+    }
+
+    [Fact]
+    public async Task A_new_tab_gets_the_fields_of_the_command()
+    {
+        var runner = new Runner("""{ "model": "Opus 5.5" }""");
+        var settings = new AppSettings { TabCommand = ["script.sh"], TabLines = ["{model}"] };
+        var viewModel = new MainViewModel([Ubuntu], [], settings, _ => { }, tabCommandRunner: runner) { IsWindowActive = true };
+
+        viewModel.Open(Ubuntu);
+
+        Assert.True(await Eventually(() => viewModel.Tabs.Single().Lines[0].Text == "Opus 5.5"));
+    }
+
+    [Fact]
+    public async Task Nothing_runs_without_a_command()
+    {
+        var runner = new Runner("{}");
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings(), _ => { }, tabCommandRunner: runner) { IsWindowActive = true };
+
+        viewModel.Open(Ubuntu);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, runner.Calls);
+    }
+
+    [Fact]
+    public async Task Setting_a_command_in_the_file_runs_it_for_the_open_tabs_and_removing_it_clears_the_fields()
+    {
+        var runner = new Runner("""{ "model": "Opus" }""");
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings { TabLines = ["{model}"] }, _ => { }, tabCommandRunner: runner) { IsWindowActive = true };
+        viewModel.Open(Ubuntu);
+        var tab = viewModel.Tabs.Single();
+
+        viewModel.ReloadSettings(new AppSettings { TabLines = ["{model}"], TabCommand = ["script.sh"] });
+        Assert.True(await Eventually(() => tab.Lines[0].Text == "Opus"));
+
+        viewModel.ReloadSettings(new AppSettings { TabLines = ["{model}"] });
+        Assert.True(await Eventually(() => tab.Lines[0].Text == ""));
+    }
+
+    [Fact]
+    public async Task The_periodic_refresh_runs_the_command_again()
+    {
+        var runner = new Runner("{}");
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings { TabCommand = ["script.sh"] }, _ => { }, tabCommandRunner: runner) { IsWindowActive = true };
+        viewModel.Open(Ubuntu);
+        Assert.True(await Eventually(() => runner.Calls == 1));
+
+        viewModel.RefreshGit();
+
+        Assert.True(await Eventually(() => runner.Calls == 2));
+    }
+
+    [Fact]
+    public void Without_a_command_the_diagnostic_says_how_to_set_one()
+    {
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings(), _ => { });
+        viewModel.Open(Ubuntu);
+
+        Assert.Contains("tabCommand", viewModel.DescribeTabCommand(viewModel.Tabs.Single()));
+    }
+
+    [Fact]
+    public void Before_the_first_run_the_diagnostic_says_it_has_not_run()
+    {
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings { TabCommand = ["script.sh"] }, _ => { });
+        viewModel.Open(Ubuntu);
+
+        Assert.Contains("pas encore", viewModel.DescribeTabCommand(viewModel.Tabs.Single()));
+    }
+
+    [Fact]
+    public async Task After_a_run_the_diagnostic_is_the_report()
+    {
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings { TabCommand = ["script.sh"] }, _ => { }, tabCommandRunner: new Runner("""{ "model": "Opus" }""")) { IsWindowActive = true };
+        viewModel.Open(Ubuntu);
+        var tab = viewModel.Tabs.Single();
+
+        Assert.True(await Eventually(() => tab.CommandDiagnostic is not null));
+        Assert.Contains("1 champ(s)", viewModel.DescribeTabCommand(tab));
+    }
+}
+
+public sealed class SettingsErrorTests
+{
+    [Fact]
+    public void A_file_that_parses_has_no_error()
+    {
+        Assert.Equal((true, null), (AppSettings.TryParse("""{ "tabLines": ["{title}"] }""", out _, out var error), error));
+    }
+
+    [Fact]
+    public void A_syntax_error_says_the_line_and_the_column()
+    {
+        var parsed = AppSettings.TryParse("{\n  \"tabLines\": [\"{title}\",]\n  \"x\": 1\n}", out var settings, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("settings.json est invalide (ligne ", error);
+        Assert.Contains("colonne", error);
+        Assert.Equal(new AppSettings(), settings);
+    }
+
+    [Fact]
+    public void A_wrong_type_names_the_key()
+    {
+        var parsed = AppSettings.TryParse("""{ "tabLines": "{title}" }""", out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("clé tabLines", error);
+    }
+
+    [Fact]
+    public void A_wrong_value_for_a_choice_names_the_key()
+    {
+        Assert.False(AppSettings.TryParse("""{ "restoreSession": "sometimes" }""", out _, out var error));
+        Assert.Contains("restoreSession", error);
+    }
+
+    [Fact]
+    public void A_file_with_no_content_is_an_error_not_a_crash()
+    {
+        Assert.False(AppSettings.TryParse("", out _, out var error));
+        Assert.StartsWith("settings.json est invalide", error);
+    }
+
+    [Fact]
+    public void The_error_is_one_line_without_the_serializer_path_noise()
+    {
+        AppSettings.TryParse("""{ "tabLines": 3 }""", out _, out var error);
+
+        Assert.DoesNotContain("Path:", error);
+        Assert.DoesNotContain('\n', error!);
+    }
+
+    [Fact]
+    public void The_view_model_raises_a_change_when_the_error_appears_and_goes()
+    {
+        var viewModel = new MainViewModel([], [], new AppSettings(), _ => { });
+        var raised = new List<string?>();
+        viewModel.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        viewModel.SettingsError = "oops";
+        viewModel.SettingsError = "oops";
+        viewModel.SettingsError = null;
+
+        Assert.Equal([nameof(MainViewModel.SettingsError), nameof(MainViewModel.SettingsError)], raised);
+    }
+}
