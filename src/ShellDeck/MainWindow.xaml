@@ -76,6 +76,7 @@
             <MenuItem Header="Fractionner horizontalement avec…" Tag="{x:Static viewModels:SplitDirection.Down}" />
             <Separator />
             <MenuItem Header="Modifier la couleur de l'onglet…" Click="OnEditTabColorClicked" />
+            <MenuItem Header="Diagnostic de la commande…" Click="OnTabCommandDiagnosticClicked" />
             <Separator />
             <MenuItem Header="Fermer l'onglet" Click="OnCloseTabClicked" />
             <MenuItem Header="Fermer les onglets ci-dessus" Click="OnCloseTabsAboveClicked" Tag="Above" />

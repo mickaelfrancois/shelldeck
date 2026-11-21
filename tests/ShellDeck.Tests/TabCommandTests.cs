@@ -175,7 +175,7 @@ public sealed class TabFieldsRefresherTests
         public int Running;
         public int MaxRunning;
 
-        public async Task<string?> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation)
+        public async Task<TabCommandRun> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation)
         {
             lock (Inputs)
             {
@@ -191,7 +191,7 @@ public sealed class TabFieldsRefresherTests
 
             try
             {
-                return await Respond(input);
+                return await Respond(input) is { } output ? TabCommandRun.Succeeded(output) : TabCommandRun.Failed(TabCommandFailure.ExitCode);
             }
             finally
             {
@@ -343,12 +343,29 @@ public sealed class TabFieldsRefresherTests
         var tabs = Enumerable.Range(0, 10).Select(_ => Tab()).ToList();
 
         refresher.Request(tabs);
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         var during = runner.MaxRunning;
         gate.SetResult();
         await refresher.WhenIdle();
 
         Assert.Equal((3, 10), (during, runner.Inputs.Count));
+    }
+
+    [Fact]
+    public async Task Each_run_leaves_a_diagnostic_on_the_tab_even_when_it_fails()
+    {
+        var runner = new FakeRunner();
+        var tab = Tab();
+        var refresher = Create(runner);
+        refresher.Request([tab]);
+        await refresher.WhenIdle();
+        var first = tab.CommandDiagnostic;
+
+        runner.Respond = _ => Task.FromResult<string?>(null);
+        refresher.Request([tab]);
+        await refresher.WhenIdle();
+
+        Assert.Equal((1, TabCommandFailure.None, TabCommandFailure.ExitCode), (first!.FieldCount, first.Run.Failure, tab.CommandDiagnostic!.Run.Failure));
     }
 
     [Fact]
@@ -408,8 +425,11 @@ public sealed class TabFieldsInTemplatesTests
 
 public sealed class ProcessTabCommandRunnerTests
 {
-    private static Task<string?> Run(TimeSpan timeout, string input, params string[] command) =>
+    private static Task<TabCommandRun> RunFully(TimeSpan timeout, string input, params string[] command) =>
         new ProcessTabCommandRunner().RunAsync(command, input, timeout, CancellationToken.None);
+
+    private static async Task<string?> Run(TimeSpan timeout, string input, params string[] command) =>
+        (await RunFully(timeout, input, command)).Output;
 
     [Fact]
     public async Task The_output_of_the_command_is_returned() =>
@@ -447,5 +467,102 @@ public sealed class ProcessTabCommandRunnerTests
         var output = await Run(TimeSpan.FromSeconds(10), "& echo pwned\r\n", "cmd.exe", "/c", "findstr", ".");
 
         Assert.Equal("& echo pwned", output?.Trim());
+    }
+
+    [Fact]
+    public async Task A_run_reports_its_exit_code_and_duration()
+    {
+        var run = await RunFully(TimeSpan.FromSeconds(10), "", "cmd.exe", "/c", "exit", "3");
+
+        Assert.Equal((TabCommandFailure.ExitCode, 3, true), (run.Failure, run.ExitCode, run.Elapsed > TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task The_start_of_the_standard_error_is_kept()
+    {
+        // where.exe prints its complaint on the standard error and exits with 1.
+        var run = await RunFully(TimeSpan.FromSeconds(10), "", "where.exe", "no-such-program-shelldeck");
+
+        Assert.Equal((TabCommandFailure.ExitCode, true), (run.Failure, run.Error.Trim().Length > 0));
+    }
+
+    [Fact]
+    public async Task A_program_that_does_not_exist_says_why()
+    {
+        var run = await RunFully(TimeSpan.FromSeconds(10), "", "no-such-program-shelldeck.exe");
+
+        Assert.Equal((TabCommandFailure.NotStarted, true), (run.Failure, run.Error.Length > 0));
+    }
+
+    [Fact]
+    public async Task A_slow_command_is_reported_as_timed_out()
+    {
+        var run = await RunFully(TimeSpan.FromMilliseconds(500), "", "cmd.exe", "/c", "ping", "-n", "30", "127.0.0.1");
+
+        Assert.Equal(TabCommandFailure.TimedOut, run.Failure);
+    }
+
+    [Fact]
+    public async Task Too_much_output_is_reported_and_the_command_is_not_left_blocked()
+    {
+        var run = await RunFully(TimeSpan.FromSeconds(20), "", "cmd.exe", "/c", "for /l %i in (1,1,20000) do @echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+
+        Assert.Equal((TabCommandFailure.TooMuchOutput, null), (run.Failure, run.Output));
+    }
+}
+
+public sealed class TabCommandDiagnosticTests
+{
+    private static TabCommandDiagnostic Diagnostic(TabCommandRun run, int? fields) =>
+        new(new DateTimeOffset(2026, 11, 22, 10, 30, 0, TimeSpan.Zero), ["wsl.exe", "--exec", "my script.sh"], """{"title":"x"}""", run, fields);
+
+    [Fact]
+    public void The_report_names_the_command_the_input_and_both_outputs()
+    {
+        var run = new TabCommandRun("""{ "model": "Opus" }""", "warning: slow", 0, TimeSpan.FromMilliseconds(120), TabCommandFailure.None);
+
+        var text = Diagnostic(run, 1).ToText();
+
+        Assert.Contains("wsl.exe --exec \"my script.sh\"", text);
+        Assert.Contains("""{"title":"x"}""", text);
+        Assert.Contains("""{ "model": "Opus" }""", text);
+        Assert.Contains("warning: slow", text);
+        Assert.Contains("120 ms", text);
+        Assert.Contains("Code de sortie : 0", text);
+    }
+
+    [Theory]
+    [InlineData(TabCommandFailure.NotStarted, "pas pu démarrer")]
+    [InlineData(TabCommandFailure.TimedOut, "trop lente")]
+    [InlineData(TabCommandFailure.ExitCode, "a échoué")]
+    [InlineData(TabCommandFailure.TooMuchOutput, "trop de sortie")]
+    public void Each_failure_has_its_own_explanation(TabCommandFailure failure, string expected) =>
+        Assert.Contains(expected, Diagnostic(TabCommandRun.Failed(failure), null).Verdict());
+
+    [Fact]
+    public void A_success_that_is_not_json_an_empty_object_and_a_good_one_are_told_apart()
+    {
+        var ok = TabCommandRun.Succeeded("x");
+
+        Assert.Equal(
+            (true, true, true),
+            (Diagnostic(ok, null).Verdict().Contains("pas un objet JSON"), Diagnostic(ok, 0).Verdict().Contains("sans aucun champ"), Diagnostic(ok, 3).Verdict().Contains("3 champ(s)")));
+    }
+
+    [Fact]
+    public void A_long_output_is_cut()
+    {
+        var run = TabCommandRun.Succeeded(new string('a', 5000));
+
+        var text = Diagnostic(run, null).ToText();
+
+        Assert.Contains("(coupé)", text);
+        Assert.True(text.Length < 4000);
+    }
+
+    [Fact]
+    public void Empty_outputs_say_so()
+    {
+        Assert.Contains("(vide)", Diagnostic(TabCommandRun.Failed(TabCommandFailure.TimedOut), null).ToText());
     }
 }

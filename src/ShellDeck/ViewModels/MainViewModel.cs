@@ -90,6 +90,14 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>The report of the last run of the tab command for <paramref name="tab"/>, or why there is none.</summary>
+    public string DescribeTabCommand(TerminalTab tab) => (_settings.TabCommand, tab.CommandDiagnostic) switch
+    {
+        (null or { Length: 0 }, _) => "Aucune commande configurée. Ajoutez `tabCommand` dans settings.json (voir le README).",
+        (_, null) => "La commande n'a pas encore été lancée pour cet onglet. Elle l'est quand la fenêtre est active : changement de dossier, fin de commande, toutes les 30 s.",
+        (_, { } diagnostic) => diagnostic.ToText(),
+    };
+
     /// <summary>Refreshes the git state of every tab (the periodic tick).</summary>
     public void RefreshGit()
     {

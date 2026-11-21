@@ -201,6 +201,11 @@ public sealed class TerminalTab : ObservableObject
         OnPropertyChanged(nameof(Lines));
     }
 
+    /// <summary>What the last run of the tab command did for this tab; null before the first run.</summary>
+    public TabCommandDiagnostic? CommandDiagnostic { get; private set; }
+
+    public void SetCommandDiagnostic(TabCommandDiagnostic diagnostic) => CommandDiagnostic = diagnostic;
+
     /// <summary>The git state of the main pane's directory, unless the shell ended; never for SSH.</summary>
     public GitStatus? ShownGit =>
         Status is not TerminalStatus.Exited && Profile.Kind is not ShellKind.Ssh ? _git : null;

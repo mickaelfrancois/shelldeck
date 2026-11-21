@@ -37,6 +37,8 @@ Le fichier est rechargé à chaud. Un champ inconnu donne du vide et une accolad
 
 ### Champs fournis par une commande
 
+Un guide pas à pas, pensé pour être suivi aussi par un agent, est dans [`docs/configurer-les-onglets.md`](docs/configurer-les-onglets.md) ; le schéma JSON de `settings.json` est dans [`docs/settings.schema.json`](docs/settings.schema.json). En cas de doute sur la commande : clic droit sur un onglet, **Diagnostic de la commande…**.
+
 Pour afficher autre chose (modèle et contexte de Claude Code, phase d'une bataille Legion, etc.), `tabCommand` déclare un programme et ses arguments, lancé pour chaque onglet :
 
 ```json

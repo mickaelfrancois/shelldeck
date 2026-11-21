@@ -308,6 +308,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnTabCommandDiagnosticClicked(object sender, RoutedEventArgs e)
+    {
+        var tab = DataContextOf<TerminalTab>(sender);
+        DiagnosticDialog.Show(this, $"Commande des onglets : {tab.Title}", _viewModel.DescribeTabCommand(tab));
+    }
+
     private void OnEditTabColorClicked(object sender, RoutedEventArgs e)
     {
         TabColorFlyout.DataContext = DataContextOf<TerminalTab>(sender);

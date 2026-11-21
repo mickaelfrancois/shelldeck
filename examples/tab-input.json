@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "title": "Refactor du handler",
+  "status": "running",
+  "profile": { "id": "wsl:Ubuntu-26.04", "name": "Ubuntu-26.04", "kind": "wsl", "location": "~" },
+  "directory": "/home/me/projects/shell-deck",
+  "claudeSessionId": null,
+  "git": { "repo": "shell-deck", "branch": "main", "detached": false, "dirty": true, "ahead": 2, "behind": 0 }
+}

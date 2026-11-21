@@ -93,10 +93,10 @@ public sealed class TabCommandWiringTests
     {
         public int Calls;
 
-        public Task<string?> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation)
+        public Task<ShellDeck.TabLines.TabCommandRun> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation)
         {
             Interlocked.Increment(ref Calls);
-            return Task.FromResult<string?>(output);
+            return Task.FromResult(ShellDeck.TabLines.TabCommandRun.Succeeded(output));
         }
     }
 
@@ -104,7 +104,7 @@ public sealed class TabCommandWiringTests
     {
         for (var i = 0; i < 100 && !condition(); i++)
         {
-            await Task.Delay(20);
+            await Task.Delay(20, TestContext.Current.CancellationToken);
         }
 
         return condition();
@@ -129,7 +129,7 @@ public sealed class TabCommandWiringTests
         var viewModel = new MainViewModel([Ubuntu], [], new AppSettings(), _ => { }, tabCommandRunner: runner) { IsWindowActive = true };
 
         viewModel.Open(Ubuntu);
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, runner.Calls);
     }
@@ -160,5 +160,34 @@ public sealed class TabCommandWiringTests
         viewModel.RefreshGit();
 
         Assert.True(await Eventually(() => runner.Calls == 2));
+    }
+
+    [Fact]
+    public void Without_a_command_the_diagnostic_says_how_to_set_one()
+    {
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings(), _ => { });
+        viewModel.Open(Ubuntu);
+
+        Assert.Contains("tabCommand", viewModel.DescribeTabCommand(viewModel.Tabs.Single()));
+    }
+
+    [Fact]
+    public void Before_the_first_run_the_diagnostic_says_it_has_not_run()
+    {
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings { TabCommand = ["script.sh"] }, _ => { });
+        viewModel.Open(Ubuntu);
+
+        Assert.Contains("pas encore", viewModel.DescribeTabCommand(viewModel.Tabs.Single()));
+    }
+
+    [Fact]
+    public async Task After_a_run_the_diagnostic_is_the_report()
+    {
+        var viewModel = new MainViewModel([Ubuntu], [], new AppSettings { TabCommand = ["script.sh"] }, _ => { }, tabCommandRunner: new Runner("""{ "model": "Opus" }""")) { IsWindowActive = true };
+        viewModel.Open(Ubuntu);
+        var tab = viewModel.Tabs.Single();
+
+        Assert.True(await Eventually(() => tab.CommandDiagnostic is not null));
+        Assert.Contains("1 champ(s)", viewModel.DescribeTabCommand(tab));
     }
 }
