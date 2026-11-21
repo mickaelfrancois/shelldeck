@@ -38,6 +38,13 @@ public sealed record AppSettings(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? TabLines { get; init; }
 
+    /// <summary>
+    /// A program and its arguments, run for each tab (never through a shell) with the tab's data as JSON on its standard
+    /// input. It prints a JSON object whose keys become fields for <see cref="TabLines"/> (<c>{model}</c>). Null: none.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? TabCommand { get; init; }
+
     /// <summary>Layout of the session opened for the default profile at startup and by the new-tab shortcut.</summary>
     public PaneTemplate DefaultTemplate { get; init; } = PaneTemplate.Single;
 

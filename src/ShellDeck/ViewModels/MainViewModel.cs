@@ -26,6 +26,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly Action<AppSettings> _saveSettings;
     private readonly IClaudeSessionLocator _claudeSessions;
     private readonly GitStatusRefresher _gitRefresher;
+    private readonly TabFieldsRefresher _fieldsRefresher;
     private bool _isWindowActive;
     private AppSettings _settings;
     private LauncherProfiles _launcher = new([], [], []);
@@ -40,13 +41,19 @@ public sealed class MainViewModel : ObservableObject
         AppSettings settings,
         Action<AppSettings> saveSettings,
         IClaudeSessionLocator? claudeSessions = null,
-        IGitStatusProbe? gitProbe = null)
+        IGitStatusProbe? gitProbe = null,
+        ITabCommandRunner? tabCommandRunner = null)
     {
         _claudeSessions = claudeSessions ?? TranscriptSessionLocator.ForCurrentUser();
         _gitRefresher = new GitStatusRefresher(
             gitProbe ?? new ProcessGitStatusProbe(),
             () => IsWindowActive,
             directory => GitRepository.FindRoot(directory, GitRepository.HasGitEntryOnDisk),
+            isOpen: tab => Tabs.Contains(tab));
+        _fieldsRefresher = new TabFieldsRefresher(
+            tabCommandRunner ?? new ProcessTabCommandRunner(),
+            () => _settings.TabCommand,
+            () => IsWindowActive,
             isOpen: tab => Tabs.Contains(tab));
         _settings = settings;
         _lineTemplates = TabLineTemplates.From(settings.TabLines);
@@ -78,12 +85,17 @@ public sealed class MainViewModel : ObservableObject
             if (SetField(ref _isWindowActive, value) && value)
             {
                 _gitRefresher.RequestOnActivation(Tabs);
+                _fieldsRefresher.Request(Tabs);
             }
         }
     }
 
     /// <summary>Refreshes the git state of every tab (the periodic tick).</summary>
-    public void RefreshGit() => _gitRefresher.RequestAll(Tabs);
+    public void RefreshGit()
+    {
+        _gitRefresher.RequestAll(Tabs);
+        _fieldsRefresher.Request(Tabs);
+    }
 
     /// <summary>The tab list, in the order the user arranged it.</summary>
     public ObservableCollection<TerminalTab> Tabs { get; } = [];
@@ -296,6 +308,7 @@ public sealed class MainViewModel : ObservableObject
 
         // A restored tab already has its directory.
         _gitRefresher.Request([tab]);
+        _fieldsRefresher.Request([tab]);
         return tab;
     }
 
@@ -304,10 +317,20 @@ public sealed class MainViewModel : ObservableObject
         if (sender is TerminalTab tab)
         {
             _gitRefresher.Request([tab]);
+            _fieldsRefresher.Request([tab]);
         }
     }
 
-    private void OnClaudeTurnEnded(object? sender, TerminalPane pane) => _ = ResolveClaudeSessionAsync(pane);
+    private void OnClaudeTurnEnded(object? sender, TerminalPane pane)
+    {
+        // The conversation moved on: what a script reads from it (model, context) may have changed.
+        if (sender is TerminalTab tab)
+        {
+            _fieldsRefresher.Request([tab]);
+        }
+
+        _ = ResolveClaudeSessionAsync(pane);
+    }
 
     /// <summary>
     /// Finds which conversation the pane's Claude Code is on: the pane's known conversation while its transcript is still being written, else the transcript written since it was seen, that no other pane
@@ -520,6 +543,11 @@ public sealed class MainViewModel : ObservableObject
         if (settings.Profiles != previous.Profiles)
         {
             ArrangeProfiles();
+        }
+
+        if (!(settings.TabCommand ?? []).SequenceEqual(previous.TabCommand ?? []))
+        {
+            _fieldsRefresher.Request(Tabs);
         }
 
         if (!(settings.TabLines ?? []).SequenceEqual(previous.TabLines ?? []))
