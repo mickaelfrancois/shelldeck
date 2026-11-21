@@ -36,6 +36,7 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
             if (SetField(ref _workingDirectory, value))
             {
                 _owner.OnPaneLayoutChanged();
+                _owner.OnPaneDirectoryChanged(this);
                 _owner.OnPaneGitRelevantChange(this);
             }
         }

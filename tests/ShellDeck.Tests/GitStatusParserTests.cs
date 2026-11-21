@@ -37,7 +37,7 @@ public sealed class GitStatusParserTests
 
         Assert.Equal(0, s.Ahead);
         Assert.Equal(0, s.Behind);
-        Assert.Equal("shell-deck \u2387 main", GitSubtitle.Format(s));
+        Assert.Equal(("shell-deck", "main"), (s.RepoName, s.Branch));
     }
 
     [Theory]

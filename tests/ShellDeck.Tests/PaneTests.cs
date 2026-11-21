@@ -128,11 +128,11 @@ public sealed class PaneTests
     public void Splitting_with_another_profile_keeps_the_tab_header_of_the_main_pane()
     {
         var tab = new TerminalTab(Ubuntu) { IsSelected = true };
-        var before = (tab.Profile, tab.Title, tab.Subtitle);
+        var before = (tab.Profile, tab.Title, string.Join("|", TabText.Of(tab)));
 
         tab.Split(SplitDirection.Down, PowerShell);
 
-        Assert.Equal(before, (tab.Profile, tab.Title, tab.Subtitle));
+        Assert.Equal(before, (tab.Profile, tab.Title, string.Join("|", TabText.Of(tab))));
     }
 
     [Fact]
@@ -327,7 +327,7 @@ public sealed class PaneTests
 
         tab.ClosePane(main);
 
-        Assert.Equal((side, "Processus terminé (code 255)"), (tab.MainPane, tab.Subtitle));
+        Assert.Equal((side, "Processus terminé (code 255)"), (tab.MainPane, TabText.Of(tab)[1]));
     }
 
     [Fact]

@@ -86,7 +86,7 @@ public sealed class GitStatusRefresherTests
         refresher.Request([tab]);
         await refresher.WhenIdle();
 
-        Assert.Equal((0, (GitStatus?)null, @"PowerShell 7 · C:\Users\me"), (probe.CallCount, tab.ShownGit, tab.Subtitle));
+        Assert.Equal((0, (GitStatus?)null, "Users\\me"), (probe.CallCount, tab.ShownGit, TabText.Of(tab)[1]));
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public sealed class GitStatusRefresherTests
     }
 
     [Fact]
-    public async Task A_failure_without_known_state_keeps_profile_and_location()
+    public async Task A_failure_without_known_state_shows_the_current_directory()
     {
         var probe = new FakeProbe { Respond = _ => Task.FromResult<GitProbeResult>(new GitProbeResult.Failed()) };
         var tab = TabIn(Ubuntu, "/home/u/repo");
@@ -250,7 +250,7 @@ public sealed class GitStatusRefresherTests
         refresher.Request([tab]);
         await refresher.WhenIdle();
 
-        Assert.Equal("Ubuntu-26.04 · ~", tab.Subtitle);
+        Assert.Equal("u/repo", TabText.Of(tab)[1]);
     }
 
     [Fact]

@@ -47,7 +47,7 @@ public sealed class MainViewModelTests
 
         tab.MarkExited(exitCode: 255, lifetime: TimeSpan.FromSeconds(1));
 
-        Assert.Equal((1, "Processus terminé (code 255)"), (viewModel.Tabs.Count, tab.Subtitle));
+        Assert.Equal((1, "Processus terminé (code 255)"), (viewModel.Tabs.Count, TabText.Of(tab)[1]));
     }
 
     [Fact]

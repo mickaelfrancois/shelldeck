@@ -5,6 +5,7 @@ using System.Windows;
 using ShellDeck.Git;
 using ShellDeck.Session;
 using ShellDeck.Shells;
+using ShellDeck.TabLines;
 using ShellDeck.Terminal;
 
 namespace ShellDeck.ViewModels;
@@ -23,7 +24,6 @@ public enum TerminalStatus
 /// </summary>
 public sealed class TerminalTab : ObservableObject
 {
-    private const string WorkingSubtitle = "Claude Code travaille…";
     private const int SuccessExitCode = 0;
     private static readonly TimeSpan StartupFailureWindow = TimeSpan.FromSeconds(3);
     private const string ClaudeWaitingMessage = "Claude attend votre réponse";
@@ -50,6 +50,7 @@ public sealed class TerminalTab : ObservableObject
     private TerminalPane _mainPane;
     private TerminalPane _activePane;
     private GitStatus? _git;
+    private IReadOnlyList<TabLineTemplate> _lineTemplates = TabLineTemplates.From(null);
 
     public TerminalTab(ShellProfile profile)
     {
@@ -84,7 +85,13 @@ public sealed class TerminalTab : ObservableObject
     public string Title
     {
         get => _title;
-        private set => SetField(ref _title, value);
+        private set
+        {
+            if (SetField(ref _title, value))
+            {
+                OnPropertyChanged(nameof(Lines));
+            }
+        }
     }
 
     public bool IsSelected
@@ -132,7 +139,7 @@ public sealed class TerminalTab : ObservableObject
         {
             if (SetField(ref _status, value))
             {
-                OnPropertyChanged(nameof(Subtitle));
+                OnPropertyChanged(nameof(Lines));
                 OnPropertyChanged(nameof(ShownGit));
             }
         }
@@ -145,24 +152,45 @@ public sealed class TerminalTab : ObservableObject
         {
             if (SetField(ref _notification, value))
             {
-                OnPropertyChanged(nameof(Subtitle));
+                OnPropertyChanged(nameof(Lines));
             }
         }
     }
 
-    public string Subtitle => Status switch
+    /// <summary>
+    /// The lines of the tab, always <see cref="TabLineTemplates.LineCount"/>, as the <c>tabLines</c> setting lays them out.
+    /// Two states take the second line over: a shell that ended, and a notification that waits for the user.
+    /// </summary>
+    public IReadOnlyList<TabLine> Lines
     {
-        TerminalStatus.Attention => Notification ?? string.Empty,
-        TerminalStatus.Exited => $"Processus terminé (code {_exitCode})",
-        _ when ShownGit is { } git => GitSubtitle.Format(git),
-        TerminalStatus.Working => WorkingSubtitle,
-        _ when Profile.Kind is ShellKind.Ssh => $"SSH · {Profile.Location}",
-        _ => $"{Profile.Name} · {Profile.Location}",
-    };
+        get
+        {
+            var context = new TabLineContext(Title, Profile.Name, Profile.Location, Profile.Kind is ShellKind.Ssh, MainPane.WorkingDirectory, ShownGit, Status);
+            var segments = _lineTemplates.Select(template => template.Render(context)).ToList();
+            switch (Status)
+            {
+                case TerminalStatus.Attention:
+                    segments[1] = Notification is { Length: > 0 } notification ? [new TabSegment(notification, SegmentStyle.Attention, 1)] : [];
+                    break;
+                case TerminalStatus.Exited:
+                    segments[1] = [new TabSegment($"Processus terminé (code {_exitCode})", SegmentStyle.Muted, 1)];
+                    break;
+            }
 
-    /// <summary>The git state of the main pane's directory, while the tab is not asking for the user or ended; never for SSH.</summary>
+            return [.. segments.Select((line, index) => new TabLine(line, index == 0))];
+        }
+    }
+
+    /// <summary>Replaces the line templates (the <c>tabLines</c> setting changed).</summary>
+    public void SetLineTemplates(IReadOnlyList<TabLineTemplate> templates)
+    {
+        _lineTemplates = templates;
+        OnPropertyChanged(nameof(Lines));
+    }
+
+    /// <summary>The git state of the main pane's directory, unless the shell ended; never for SSH.</summary>
     public GitStatus? ShownGit =>
-        Status is TerminalStatus.Running or TerminalStatus.Working && Profile.Kind is not ShellKind.Ssh ? _git : null;
+        Status is not TerminalStatus.Exited && Profile.Kind is not ShellKind.Ssh ? _git : null;
 
     /// <summary>Sets the git state of the main pane's directory; null when it is not in a repository.</summary>
     public void ApplyGitStatus(GitStatus? status)
@@ -173,7 +201,7 @@ public sealed class TerminalTab : ObservableObject
         }
 
         _git = status;
-        OnPropertyChanged(nameof(Subtitle));
+        OnPropertyChanged(nameof(Lines));
         OnPropertyChanged(nameof(ShownGit));
     }
 
@@ -210,6 +238,15 @@ public sealed class TerminalTab : ObservableObject
     public event EventHandler<TerminalPane>? ClaudeTurnEnded;
 
     internal void OnClaudeTurnEnded(TerminalPane pane) => ClaudeTurnEnded?.Invoke(this, pane);
+
+    /// <summary>The subtitle shows the main pane's directory when no git state replaces it.</summary>
+    internal void OnPaneDirectoryChanged(TerminalPane pane)
+    {
+        if (pane == MainPane)
+        {
+            OnPropertyChanged(nameof(Lines));
+        }
+    }
 
     internal void OnPaneLayoutChanged() => LayoutChanged?.Invoke(this, EventArgs.Empty);
 
@@ -592,7 +629,7 @@ public sealed class TerminalTab : ObservableObject
     {
         MainPane = pane;
         _git = null;
-        OnPropertyChanged(nameof(Subtitle));
+        OnPropertyChanged(nameof(Lines));
         OnPropertyChanged(nameof(ShownGit));
         _exitCode = pane.ExitCode;
         Notification = null;

@@ -31,6 +31,13 @@ public sealed record AppSettings(
     /// <summary>Terminal opened at startup, by <see cref="ShellProfile.Id"/>; null means the first shell found.</summary>
     public string? DefaultProfileId { get; init; }
 
+    /// <summary>
+    /// The three lines of a tab, each a text with <c>{fields}</c> such as <c>{title}</c>, <c>{parent}{folder}</c>, <c>{git}</c>.
+    /// Missing lines are empty, extra ones ignored; null (not written) means the default lines.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? TabLines { get; init; }
+
     /// <summary>Layout of the session opened for the default profile at startup and by the new-tab shortcut.</summary>
     public PaneTemplate DefaultTemplate { get; init; } = PaneTemplate.Single;
 
