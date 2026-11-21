@@ -35,6 +35,25 @@ Le fichier est rechargé à chaud. Un champ inconnu donne du vide et une accolad
 | `{git.repo}`, `{git.branch}` | nom du repo, branche |
 | `{git.dirty}`, `{git.ahead}`, `{git.behind}` | marqueurs, avec leur espace de tête (` ●`, ` ↑2`, ` ↓1`) |
 
+### Champs fournis par une commande
+
+Pour afficher autre chose (modèle et contexte de Claude Code, phase d'une bataille Legion, etc.), `tabCommand` déclare un programme et ses arguments, lancé pour chaque onglet :
+
+```json
+{
+  "tabCommand": ["wsl.exe", "-d", "Ubuntu-26.04", "--exec", "python3", "/home/me/shell-deck/examples/claude-tab.py"],
+  "tabLines": ["{title}", "{parent}{folder}", "{git}  {model} {ctx}"]
+}
+```
+
+- **Entrée :** ShellDeck envoie sur l'entrée standard un objet JSON : `version`, `title`, `status` (`running`, `working`, `attention`, `exited`), `profile` (`id`, `name`, `kind`, `location`), `directory`, `claudeSessionId` et `git` (`repo`, `branch`, `detached`, `dirty`, `ahead`, `behind`, ou `null`). `directory` et `claudeSessionId` sont nuls en SSH ou tant que le shell n'a rien annoncé.
+- **Sortie :** la commande écrit sur la sortie standard un objet JSON dont chaque clé devient un champ utilisable dans `tabLines`. Une valeur est un texte, un nombre, ou `{"text": "BUILD", "style": "attention"}`. Styles : `normal`, `muted` (défaut), `strong`, `attention`, `dirty`, `ahead`, `behind`.
+- **Rafraîchissement :** au changement de dossier, à la fin d'une commande, à la fin d'un tour de Claude Code, toutes les 30 s et au retour de la fenêtre, jamais fenêtre inactive. Un onglet n'a qu'une exécution à la fois, trois commandes au plus tournent ensemble.
+- **Échec :** une commande qui échoue, dépasse 2 s, affiche plus de 64 Ko ou ne renvoie pas un objet JSON garde les valeurs précédentes de l'onglet. Les champs intégrés (`{title}`, `{git}`…) l'emportent sur un champ de même nom.
+- **Sécurité :** la commande n'est lue que dans `settings.json`. Elle est lancée directement, sans shell, et les données du terminal (dossier, titre, session) n'arrivent que par l'entrée standard, jamais dans la ligne de commande : un script doit les traiter comme du texte non fiable. Sa sortie est nettoyée (caractères de contrôle remplacés par des espaces, 200 caractères et 32 champs au plus, noms limités à lettres, chiffres, `_`, `.` et `-`).
+
+`examples/claude-tab.py` donne `{model}`, `{ctx}` (tokens du contexte) et `{ctxpct}` en lisant le transcript de la session Claude Code (`~/.claude/projects`), à lancer dans la distribution WSL. Le transcript n'indique pas la taille de la fenêtre de contexte : 200 000 tokens par défaut, `SHELLDECK_CTX_WINDOW` pour une autre (par exemple `--exec env SHELLDECK_CTX_WINDOW=1000000 python3 …`).
+
 ## Dossier courant et git
 
 ShellDeck n'injecte rien dans le shell : **c'est le shell qui doit annoncer son dossier courant** à chaque prompt, par une séquence OSC 7 (`file://hôte/chemin`) ou OSC 9;9 (ConEmu). Sans cela, la deuxième ligne n'affiche que `Profil · emplacement` (le dossier d'ouverture) et il n'y a pas d'info git.

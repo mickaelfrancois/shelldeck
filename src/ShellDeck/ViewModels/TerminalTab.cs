@@ -50,6 +50,7 @@ public sealed class TerminalTab : ObservableObject
     private TerminalPane _mainPane;
     private TerminalPane _activePane;
     private GitStatus? _git;
+    private IReadOnlyDictionary<string, TabSegment> _extraFields = TabLineContextFields.None;
     private IReadOnlyList<TabLineTemplate> _lineTemplates = TabLineTemplates.From(null);
 
     public TerminalTab(ShellProfile profile)
@@ -165,7 +166,7 @@ public sealed class TerminalTab : ObservableObject
     {
         get
         {
-            var context = new TabLineContext(Title, Profile.Name, Profile.Location, Profile.Kind is ShellKind.Ssh, MainPane.WorkingDirectory, ShownGit, Status);
+            var context = new TabLineContext(Title, Profile.Name, Profile.Location, Profile.Kind is ShellKind.Ssh, MainPane.WorkingDirectory, ShownGit, Status, _extraFields);
             var segments = _lineTemplates.Select(template => template.Render(context)).ToList();
             switch (Status)
             {
@@ -185,6 +186,18 @@ public sealed class TerminalTab : ObservableObject
     public void SetLineTemplates(IReadOnlyList<TabLineTemplate> templates)
     {
         _lineTemplates = templates;
+        OnPropertyChanged(nameof(Lines));
+    }
+
+    /// <summary>Sets the fields the tab command provides; the lines are redrawn only when they changed.</summary>
+    public void SetExtraFields(IReadOnlyDictionary<string, TabSegment> fields)
+    {
+        if (_extraFields.Count == fields.Count && _extraFields.All(pair => fields.TryGetValue(pair.Key, out var other) && other == pair.Value))
+        {
+            return;
+        }
+
+        _extraFields = fields;
         OnPropertyChanged(nameof(Lines));
     }
 
