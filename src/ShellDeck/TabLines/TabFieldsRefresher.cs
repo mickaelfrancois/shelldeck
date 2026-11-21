@@ -104,11 +104,12 @@ public sealed class TabFieldsRefresher
 
                 // Only state is read here: no disk, no process.
                 var input = TabCommandInput.Build(tab);
-                string? output;
+                TabCommandRun run;
+                var at = DateTimeOffset.Now;
                 await _slots.WaitAsync();
                 try
                 {
-                    output = await Task.Run(() => _runner.RunAsync(command, input, _timeout, CancellationToken.None));
+                    run = await Task.Run(() => _runner.RunAsync(command, input, _timeout, CancellationToken.None));
                 }
                 finally
                 {
@@ -116,9 +117,14 @@ public sealed class TabFieldsRefresher
                 }
 
                 // A failed run keeps what the tab showed: a slow script must not make the lines flicker.
-                if (_isOpen(tab) && ReferenceEquals(command, _command()) && TabCommandOutput.Parse(output) is { } fields)
+                if (_isOpen(tab) && ReferenceEquals(command, _command()))
                 {
-                    tab.SetExtraFields(fields);
+                    var fields = TabCommandOutput.Parse(run.Output);
+                    tab.SetCommandDiagnostic(new TabCommandDiagnostic(at, command, input, run, fields?.Count));
+                    if (fields is not null)
+                    {
+                        tab.SetExtraFields(fields);
+                    }
                 }
 
                 lock (_gate)

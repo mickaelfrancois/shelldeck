@@ -76,6 +76,7 @@
             <MenuItem Header="Fractionner horizontalement avec…" Tag="{x:Static viewModels:SplitDirection.Down}" />
             <Separator />
             <MenuItem Header="Modifier la couleur de l'onglet…" Click="OnEditTabColorClicked" />
+            <MenuItem Header="Diagnostic de la commande…" Click="OnTabCommandDiagnosticClicked" />
             <Separator />
             <MenuItem Header="Fermer l'onglet" Click="OnCloseTabClicked" />
             <MenuItem Header="Fermer les onglets ci-dessus" Click="OnCloseTabsAboveClicked" Tag="Above" />
@@ -152,6 +153,17 @@
             </Border.Style>
 
             <DockPanel>
+                <!-- A settings.json that cannot be read: the settings in force stay, and the file says what is wrong. -->
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="10,8"
+                        Background="{StaticResource ChromeRaisedBrush}"
+                        Visibility="{Binding SettingsError, Converter={x:Static shelldeck:Converters.NotNullToVisible}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource DialogButtonStyle}" Content="Ouvrir" Margin="8,0,0,0" VerticalAlignment="Top"
+                                Click="OnSettingsClicked" />
+                        <TextBlock Text="{Binding SettingsError}" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource AttentionBrush}" />
+                    </DockPanel>
+                </Border>
+
                 <!-- Footer: application-level actions (keyboard reference, settings). -->
                 <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="8,6">
                     <Grid>

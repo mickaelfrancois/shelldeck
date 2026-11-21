@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/mickaelfrancois/shelldeck/main/docs/settings.schema.json",
+  "title": "Réglages de ShellDeck (settings.json)",
+  "description": "Fichier %USERPROFILE%\\.shelldeck\\settings.json. Rechargé à chaud ; une clé inconnue est ignorée.",
+  "type": "object",
+  "properties": {
+    "panelSide": {
+      "description": "Côté de la fenêtre où se trouve la liste des sessions.",
+      "enum": ["left", "right"],
+      "default": "left"
+    },
+    "defaultProfileId": {
+      "description": "Terminal ouvert au démarrage et par le raccourci nouvel onglet, par identifiant (ex. wsl:Ubuntu-26.04). Absent : le premier shell trouvé.",
+      "type": "string"
+    },
+    "defaultProfileName": {
+      "description": "Écrit par les anciennes versions (nom du terminal). Lu seulement tant que defaultProfileId est absent.",
+      "type": "string"
+    },
+    "defaultTemplate": {
+      "description": "Disposition de la session ouverte pour le profil par défaut : un panneau, deux côte à côte, deux empilés, un grand + deux, grille 2×2.",
+      "enum": ["single", "columns", "rows", "mainAndSide", "grid"],
+      "default": "single"
+    },
+    "restoreSession": {
+      "description": "Rouvrir les onglets et panneaux de la dernière session au démarrage.",
+      "enum": ["never", "ask", "always"],
+      "default": "always"
+    },
+    "window": {
+      "description": "Taille et position de la fenêtre, écrites à la fermeture.",
+      "type": "object",
+      "properties": {
+        "left": { "type": "number" },
+        "top": { "type": "number" },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "isMaximized": { "type": "boolean" }
+      }
+    },
+    "profiles": {
+      "description": "Lanceur : terminaux ajoutés, masqués, ordre, dossier de départ.",
+      "type": "object",
+      "properties": {
+        "custom": {
+          "description": "Terminaux ajoutés par l'utilisateur.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "commandLine"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "commandLine": { "type": "string" },
+              "startingDirectory": { "description": "Dossier Windows ; vide : le dossier de l'utilisateur.", "type": "string" }
+            }
+          }
+        },
+        "startingDirectories": {
+          "description": "Dossier de départ choisi pour un terminal découvert, par identifiant.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "hidden": { "description": "Identifiants des terminaux masqués.", "type": "array", "items": { "type": "string" } },
+        "order": { "description": "Ordre du lanceur, par identifiant.", "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "tabLines": {
+      "description": "Les trois lignes d'un onglet, un gabarit par ligne. Champs : {title} {profile} {folder} {parent} {path} {git} {git.repo} {git.branch} {git.dirty} {git.ahead} {git.behind}, plus les champs de tabCommand. {{ et }} donnent une accolade. Lignes manquantes : vides ; lignes en trop : ignorées ; absent : [\"{title}\", \"{parent}{folder}\", \"{git}\"].",
+      "type": "array",
+      "items": { "type": ["string", "null"] },
+      "maxItems": 3,
+      "examples": [["{title}", "{parent}{folder}", "{git}  {model} {ctx}"]]
+    },
+    "tabCommand": {
+      "description": "Programme et arguments lancés pour chaque onglet, sans shell : le premier élément est le programme (chemin complet, ni ~ ni variables), les suivants ses arguments. Reçoit les données de l'onglet en JSON sur l'entrée standard, écrit sur la sortie standard un objet JSON dont chaque clé devient un champ de tabLines. Délai de 2 s.",
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "examples": [["wsl.exe", "-d", "Ubuntu-26.04", "--exec", "python3", "/home/me/shell-deck/examples/claude-tab.py"]]
+    }
+  }
+}

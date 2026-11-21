@@ -4,11 +4,31 @@ using System.Text;
 
 namespace ShellDeck.TabLines;
 
+/// <summary>Why a run gave no output.</summary>
+public enum TabCommandFailure
+{
+    None,
+    NotStarted,
+    TimedOut,
+    ExitCode,
+    TooMuchOutput,
+}
+
+/// <summary>
+/// What one run of the tab command did. <paramref name="Output"/> is null whenever <paramref name="Failure"/> is not
+/// <see cref="TabCommandFailure.None"/>. <paramref name="Error"/> is the start of its standard error, for the diagnostic.
+/// </summary>
+public sealed record TabCommandRun(string? Output, string Error, int? ExitCode, TimeSpan Elapsed, TabCommandFailure Failure)
+{
+    public static TabCommandRun Succeeded(string output) => new(output, string.Empty, 0, TimeSpan.Zero, TabCommandFailure.None);
+
+    public static TabCommandRun Failed(TabCommandFailure failure, string error = "") => new(null, error, null, TimeSpan.Zero, failure);
+}
+
 /// <summary>Runs the tab command once with the tab's data on its standard input.</summary>
 public interface ITabCommandRunner
 {
-    /// <summary>The standard output of the command; null when it could not start, failed, was too slow or printed too much.</summary>
-    Task<string?> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation);
+    Task<TabCommandRun> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation);
 }
 
 /// <summary>
@@ -17,11 +37,13 @@ public interface ITabCommandRunner
 /// </summary>
 public sealed class ProcessTabCommandRunner : ITabCommandRunner
 {
-    public async Task<string?> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation)
+    private const int MaxErrorLength = 4096;
+
+    public async Task<TabCommandRun> RunAsync(IReadOnlyList<string> command, string input, TimeSpan timeout, CancellationToken cancellation)
     {
         if (command.Count == 0 || string.IsNullOrWhiteSpace(command[0]))
         {
-            return null;
+            return TabCommandRun.Failed(TabCommandFailure.NotStarted, "Aucun programme à lancer.");
         }
 
         var start = new ProcessStartInfo(command[0])
@@ -33,12 +55,14 @@ public sealed class ProcessTabCommandRunner : ITabCommandRunner
             RedirectStandardError = true,
             StandardInputEncoding = new UTF8Encoding(false),
             StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var argument in command.Skip(1))
         {
             start.ArgumentList.Add(argument);
         }
 
+        var watch = Stopwatch.StartNew();
         Process process;
         try
         {
@@ -46,7 +70,7 @@ public sealed class ProcessTabCommandRunner : ITabCommandRunner
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            return null;
+            return TabCommandRun.Failed(TabCommandFailure.NotStarted, exception.Message);
         }
 
         using (process)
@@ -56,8 +80,8 @@ public sealed class ProcessTabCommandRunner : ITabCommandRunner
             try
             {
                 // Drained at once, or a chatty command would block on a full pipe and look slow.
-                var error = process.StandardError.ReadToEndAsync(limit.Token);
-                var output = ReadLimitedAsync(process.StandardOutput, limit.Token);
+                var error = ReadLimitedAsync(process.StandardError, MaxErrorLength, limit.Token);
+                var output = ReadLimitedAsync(process.StandardOutput, TabCommandOutput.MaxOutputBytes, limit.Token);
                 try
                 {
                     await process.StandardInput.WriteAsync(input.AsMemory(), limit.Token);
@@ -68,34 +92,41 @@ public sealed class ProcessTabCommandRunner : ITabCommandRunner
                     // The command did not read its input: its output is still worth reading.
                 }
 
-                var text = await output;
+                var (text, overflow) = await output;
                 await process.WaitForExitAsync(limit.Token);
-                await error;
-                return process.ExitCode == 0 ? text : null;
+                var (errorText, _) = await error;
+                var exitCode = process.ExitCode;
+                var failure = overflow ? TabCommandFailure.TooMuchOutput : exitCode != 0 ? TabCommandFailure.ExitCode : TabCommandFailure.None;
+                return new TabCommandRun(failure is TabCommandFailure.None ? text : null, errorText, exitCode, watch.Elapsed, failure);
             }
             catch (OperationCanceledException)
             {
                 Kill(process);
-                return null;
+                return new TabCommandRun(null, string.Empty, null, watch.Elapsed, TabCommandFailure.TimedOut);
             }
         }
     }
 
-    private static async Task<string?> ReadLimitedAsync(StreamReader reader, CancellationToken cancellation)
+    /// <summary>The start of the stream, up to <paramref name="limit"/> characters; true when there was more.</summary>
+    private static async Task<(string Text, bool Overflow)> ReadLimitedAsync(StreamReader reader, int limit, CancellationToken cancellation)
     {
         var buffer = new char[4096];
         var text = new StringBuilder();
+        var overflow = false;
         int read;
         while ((read = await reader.ReadAsync(buffer.AsMemory(), cancellation)) > 0)
         {
-            text.Append(buffer, 0, read);
-            if (text.Length > TabCommandOutput.MaxOutputBytes)
+            if (text.Length + read > limit)
             {
-                return null;
+                overflow = true;
+                text.Append(buffer, 0, limit - text.Length);
+                continue; // keep draining: stopping would block the command on a full pipe
             }
+
+            text.Append(buffer, 0, read);
         }
 
-        return text.ToString();
+        return (text.ToString(), overflow);
     }
 
     private static void Kill(Process process)
