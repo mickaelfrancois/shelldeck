@@ -11,7 +11,10 @@
         FontFamily="{StaticResource UiFont}" FontSize="13">
     <Window.Resources>
         <!-- Shared by every terminal of the launcher: its DataContext is the ShellProfile it was opened on. -->
-        <ContextMenu x:Key="ProfileContextMenu">
+        <ContextMenu x:Key="ProfileContextMenu" Opened="OnProfileContextMenuOpened">
+            <MenuItem Header="Ouvrir avec la disposition…" Tag="OpenWith" />
+            <MenuItem Header="Disposition par défaut…" Tag="DefaultTemplate" />
+            <Separator />
             <MenuItem Header="Ouvrir au démarrage" Click="OnSetDefaultProfileClicked" />
             <MenuItem Header="Monter" Click="OnMoveProfileUpClicked" />
             <MenuItem Header="Descendre" Click="OnMoveProfileDownClicked" />

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ShellDeck.Shells;
+using ShellDeck.ViewModels;
 
 namespace ShellDeck;
 
@@ -29,6 +30,9 @@ public sealed record AppSettings(
 {
     /// <summary>Terminal opened at startup, by <see cref="ShellProfile.Id"/>; null means the first shell found.</summary>
     public string? DefaultProfileId { get; init; }
+
+    /// <summary>Layout of the session opened for the default profile at startup and by the new-tab shortcut.</summary>
+    public PaneTemplate DefaultTemplate { get; init; } = PaneTemplate.Single;
 
     /// <summary>Reopen the tabs and panes of the last session at startup: "never", "ask" or "always".</summary>
     public RestoreSession RestoreSession { get; init; } = RestoreSession.Always;

@@ -166,6 +166,33 @@ public partial class MainWindow : Window
     private void OnMoveProfileDownClicked(object sender, RoutedEventArgs e) =>
         _viewModel.MoveProfile(DataContextOf<ShellProfile>(sender), 1);
 
+    /// <summary>The layout submenus, filled at each opening: the default one shows which layout is checked.</summary>
+    private void OnProfileContextMenuOpened(object sender, RoutedEventArgs e)
+    {
+        var menu = (ContextMenu)sender;
+        var profile = (ShellProfile)menu.DataContext;
+        foreach (var item in menu.Items.OfType<MenuItem>().Where(item => item.Tag is string))
+        {
+            item.Items.Clear();
+            foreach (var template in PaneTemplates.All)
+            {
+                // A TextBlock shows the label as is: a string header could read "_" as an access key.
+                var entry = new MenuItem { Header = new TextBlock { Text = template.Label() } };
+                if ((string)item.Tag == "OpenWith")
+                {
+                    entry.Click += (_, _) => _viewModel.Open(profile, template);
+                }
+                else
+                {
+                    entry.IsChecked = template == _viewModel.DefaultTemplate;
+                    entry.Click += (_, _) => _viewModel.SetDefaultTemplate(template);
+                }
+
+                item.Items.Add(entry);
+            }
+        }
+    }
+
     private void OnHideProfileClicked(object sender, RoutedEventArgs e) =>
         _viewModel.HideProfile(DataContextOf<ShellProfile>(sender));
 
