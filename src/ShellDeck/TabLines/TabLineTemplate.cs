@@ -7,6 +7,9 @@ namespace ShellDeck.TabLines;
 /// </summary>
 public sealed class TabLineTemplate
 {
+    /// <summary><c>{&gt;}</c> pushes what follows to the right edge of the line.</summary>
+    public const string SpacerField = ">";
+
     private readonly record struct Token(string? Literal, string? Field);
 
     private readonly IReadOnlyList<Token> _tokens;
@@ -69,7 +72,11 @@ public sealed class TabLineTemplate
         var anyFieldFilled = false;
         foreach (var token in _tokens)
         {
-            if (token.Field is { } field)
+            if (token.Field == SpacerField)
+            {
+                segments.Add(new TabSegment("", SegmentStyle.Muted, 0, Spacer: true));
+            }
+            else if (token.Field is { } field)
             {
                 hasField = true;
                 var resolved = TabFields.Resolve(field, tab);
@@ -82,6 +89,7 @@ public sealed class TabLineTemplate
             }
         }
 
+        // A line with only a spacer and nothing filled around it stays empty.
         return hasField && !anyFieldFilled ? [] : segments;
     }
 }
