@@ -69,11 +69,20 @@ public sealed class TabLinePanel : Panel
 
     protected override Size ArrangeOverride(Size finalSize)
     {
+        var children = InternalChildren.Cast<UIElement>().ToArray();
+        var spacer = Array.FindIndex(children, IsSpacer);
+        // Segments after the spacer are flush right, but never overlap what comes before it.
+        var rightWidth = spacer < 0 ? 0 : children.Skip(spacer + 1).Sum(child => child.DesiredSize.Width);
         double x = 0;
-        foreach (UIElement child in InternalChildren)
+        for (var i = 0; i < children.Length; i++)
         {
-            var width = child.DesiredSize.Width;
-            child.Arrange(new Rect(x, 0, width, finalSize.Height));
+            if (i == spacer + 1 && spacer >= 0)
+            {
+                x = Math.Max(x, finalSize.Width - rightWidth);
+            }
+
+            var width = children[i].DesiredSize.Width;
+            children[i].Arrange(new Rect(x, 0, width, finalSize.Height));
             x += width;
         }
 
@@ -83,6 +92,9 @@ public sealed class TabLinePanel : Panel
     // The panel's children are the containers of an ItemsControl: the segment is their content.
     private static int ShrinkOf(UIElement child) =>
         child is ContentPresenter { Content: TabSegment segment } ? segment.Shrink : 0;
+
+    private static bool IsSpacer(UIElement child) =>
+        child is ContentPresenter { Content: TabSegment { Spacer: true } };
 
     private double EllipsisWidth()
     {

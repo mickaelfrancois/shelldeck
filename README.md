@@ -22,7 +22,7 @@ Dans `~/.shelldeck/settings.json`, `tabLines` donne un gabarit par ligne (trois 
 }
 ```
 
-Le fichier est rechargé à chaud. Un champ inconnu donne du vide et une accolade non fermée reste du texte. Une ligne dont tous les champs sont vides est vide (`⎇ {git.branch}` n'affiche rien hors d'un repo). `{{` et `}}` donnent une accolade.
+Le fichier est rechargé à chaud. Un champ inconnu donne du vide et une accolade non fermée reste du texte. Une ligne dont tous les champs sont vides est vide (`⎇ {git.branch}` n'affiche rien hors d'un repo). `{{` et `}}` donnent une accolade. `{>}` pousse ce qui suit au bord droit de la ligne (`"{git}{>}{ctx}"`) ; sans place, la fin ne chevauche jamais le début.
 
 | Champ | Contenu |
 | --- | --- |

@@ -72,7 +72,7 @@ def main():
     model, usage = found
     used = sum(int(usage.get(key) or 0) for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
     percent = round(100 * used / WINDOW)
-    style = "attention" if percent >= 80 else "muted"
+    style = "behind" if percent >= 80 else "attention" if percent >= 40 else "muted"  # orange, yellow, grey
     print(json.dumps({
         "model": display_model(model),
         "ctx": {"text": f"{used // 1000}k", "style": style},

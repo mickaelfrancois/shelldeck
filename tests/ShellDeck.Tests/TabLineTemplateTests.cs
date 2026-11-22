@@ -40,6 +40,19 @@ public sealed class TabLineTemplateTests
         Assert.Equal("", Text(template, Plain));
 
     [Fact]
+    public void A_spacer_sits_between_what_is_left_and_what_is_right()
+    {
+        var segments = TabLineTemplate.Parse("{git.branch}{>}{title}").Render(InRepo);
+
+        Assert.Equal(["main", "", "Ubuntu-26.04"], segments.Select(segment => segment.Text));
+        Assert.Equal([false, true, false], segments.Select(segment => segment.Spacer));
+    }
+
+    [Fact]
+    public void A_spacer_does_not_keep_an_otherwise_empty_line_alive() =>
+        Assert.Empty(TabLineTemplate.Parse("{git}{>}{git.branch}").Render(Plain));
+
+    [Fact]
     public void Markers_only_show_when_needed()
     {
         var clean = InRepo with { Git = new GitStatus("r", "main", false, false, 0, 0) };
