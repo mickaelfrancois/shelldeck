@@ -23,8 +23,9 @@
     #search-count { min-width: 70px; text-align: center; color: #a0a1ab; white-space: nowrap; }
     #search-count.invalid { color: #f85149; }
     body.searching #status { top: 52px; }
-    /* xterm only shows its scrollbar while hovering or scrolling: keep it on screen once there is history. */
-    #terminal.has-scrollback .xterm-scrollable-element > .scrollbar.vertical.invisible { opacity: 1; pointer-events: auto; }
+    /* xterm only shows its scrollbar while hovering or scrolling: keep it on screen once there is history.
+       z-index matches xterm's own .visible rule: without it the (positioned) screen paints over the bar. */
+    #terminal.has-scrollback .xterm-scrollable-element > .scrollbar.vertical.invisible { opacity: 1; pointer-events: auto; z-index: 11; }
   </style>
 </head>
 <body>
