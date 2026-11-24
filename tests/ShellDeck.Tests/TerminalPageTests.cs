@@ -31,6 +31,14 @@ public sealed class TerminalPageTests
     }
 
     [Fact]
+    public void The_scrollbar_stays_above_the_screen_once_there_is_history()
+    {
+        string html = File.ReadAllText(Path.Combine(FindWwwroot(), "terminal.html"));
+
+        Assert.Matches(@"#terminal\.has-scrollback[^{]*\.scrollbar\.vertical\.invisible\s*\{[^}]*opacity:\s*1[^}]*z-index:\s*11", html);
+    }
+
+    [Fact]
     public void The_page_exposes_the_search_overlay()
     {
         string html = File.ReadAllText(Path.Combine(FindWwwroot(), "terminal.html"));
