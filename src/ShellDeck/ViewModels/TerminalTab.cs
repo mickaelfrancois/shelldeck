@@ -284,8 +284,26 @@ public sealed class TerminalTab : ObservableObject
             return;
         }
 
+        RefreshWorkingStatus();
+    }
+
+    /// <summary>A side pane's title changed: the tab keeps spinning while any pane works, not only the main one.</summary>
+    internal void OnSidePaneTitleChanged()
+    {
+        if (Status is TerminalStatus.Exited or TerminalStatus.Attention)
+        {
+            return;
+        }
+
+        RefreshWorkingStatus();
+    }
+
+    private bool IsAnyPaneWorking => Panes.Any(pane => ClaudeCodeTitle.IsWorking(pane.TerminalTitle));
+
+    private void RefreshWorkingStatus()
+    {
         var wasWorking = Status is TerminalStatus.Working;
-        Status = ClaudeCodeTitle.IsWorking(title) ? TerminalStatus.Working : TerminalStatus.Running;
+        Status = IsAnyPaneWorking ? TerminalStatus.Working : TerminalStatus.Running;
 
         // Claude Code stops working either because it finished or because it needs an answer: both need the user.
         if (wasWorking && Status is TerminalStatus.Running)
@@ -389,6 +407,10 @@ public sealed class TerminalTab : ObservableObject
         if (pane == MainPane)
         {
             PromoteToMain(Panes[0]);
+        }
+        else
+        {
+            OnSidePaneTitleChanged();
         }
 
         if (pane == ActivePane)
@@ -672,7 +694,7 @@ public sealed class TerminalTab : ObservableObject
         }
 
         Notification = null;
-        Status = ClaudeCodeTitle.IsWorking(Title) ? TerminalStatus.Working : TerminalStatus.Running;
+        Status = IsAnyPaneWorking ? TerminalStatus.Working : TerminalStatus.Running;
     }
 
     private static bool IsExecutablePath(string title) =>
