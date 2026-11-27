@@ -159,6 +159,10 @@ public sealed class TerminalPane : ObservableObject, IPaneNode
         {
             _owner.ApplyTerminalTitle(title);
         }
+        else
+        {
+            _owner.OnSidePaneTitleChanged();
+        }
     }
 
     private void TrackClaude(bool wasClaude, bool wasWorking)
